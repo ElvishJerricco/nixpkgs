@@ -101,6 +101,7 @@ in {
       bootPkgs = packages.ghc822;
       ghcjsSrcJson = ../development/compilers/ghcjs-ng/8.2/git.json;
       stage0 = ../development/compilers/ghcjs-ng/8.2/stage0.nix;
+      ghcjsDepOverrides = callPackage ../development/compilers/ghcjs-ng/8.2/dep-overrides.nix {};
     };
     ghcjs84 = callPackage ../development/compilers/ghcjs-ng {
       bootPkgs = packages.ghc843;
