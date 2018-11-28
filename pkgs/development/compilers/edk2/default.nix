@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitHub, fetchpatch, libuuid, python2, iasl }:
+{ stdenv, fetchgit, fetchpatch, libuuid, python2, iasl }:
 
 let
   pythonEnv = python2.withPackages(ps: [ps.tkinter]);
@@ -13,22 +13,22 @@ else
   throw "Unsupported architecture";
 
 edk2 = stdenv.mkDerivation {
-  name = "edk2-2017-12-05";
+  name = "edk2-2018-11";
 
-  src = fetchFromGitHub {
-    owner = "tianocore";
-    repo = "edk2";
-    rev = "f71a70e7a4c93a6143d7bad8ab0220a947679697";
-    sha256 = "0k48xfwxcgcim1bhkggc19hilvsxsf5axvvcpmld0ng1fcfg0cr6";
+  src = fetchgit {
+    url = "https://github.com/tianocore/edk2";
+    rev = "edk2-stable201811";
+    sha256 = "0jf0apfms830gszql8gm29lmn3p3acdhnafbjjfwggw4invns5fz";
+    fetchSubmodules = true;
   };
 
-  patches = [
-    (fetchpatch {
-      name = "short-circuit-the-transfer-of-an-empty-S3_CONTEXT.patch";
-      url = "https://github.com/tianocore/edk2/commit/9e2a8e928995c3b1bb664b73fd59785055c6b5f6.diff";
-      sha256 = "0x24npijhgpjpsn3n74wayf8qcbaj97vi4z2iyf4almavqq8qaz4";
-    })
-  ];
+  # patches = [
+  #   (fetchpatch {
+  #     name = "short-circuit-the-transfer-of-an-empty-S3_CONTEXT.patch";
+  #     url = "https://github.com/tianocore/edk2/commit/9e2a8e928995c3b1bb664b73fd59785055c6b5f6.diff";
+  #     sha256 = "0x24npijhgpjpsn3n74wayf8qcbaj97vi4z2iyf4almavqq8qaz4";
+  #   })
+  # ];
 
   buildInputs = [ libuuid pythonEnv ];
 
