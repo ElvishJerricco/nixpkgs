@@ -2283,6 +2283,8 @@ with pkgs;
 
   edk2 = callPackage ../development/compilers/edk2 { };
 
+  efifs = callPackage ../misc/efifs { };
+
   eff = callPackage ../development/interpreters/eff { };
 
   eflite = callPackage ../applications/audio/eflite {};
