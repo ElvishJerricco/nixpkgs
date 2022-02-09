@@ -492,6 +492,7 @@ let
           # We use try_first_pass the second time to avoid prompting password twice
           (optionalString (cfg.unixAuth &&
             (config.security.pam.enableEcryptfs
+              || config.security.pam.zfs.enableEncryptedHome
               || cfg.pamMount
               || cfg.enableKwallet
               || cfg.enableGnomeKeyring
@@ -504,6 +505,9 @@ let
               '' +
               optionalString config.security.pam.enableEcryptfs ''
                 auth optional ${pkgs.ecryptfs}/lib/security/pam_ecryptfs.so unwrap
+              '' +
+              optionalString config.security.pam.zfs.enableEncryptedHome ''
+                auth required ${config.boot.zfs.package}/lib/security/pam_zfs_key.so homes=${config.security.pam.zfs.homes}
               '' +
               optionalString cfg.pamMount ''
                 auth optional ${pkgs.pam_mount}/lib/security/pam_mount.so disable_interactive
@@ -550,6 +554,9 @@ let
           optionalString config.security.pam.enableEcryptfs ''
             password optional ${pkgs.ecryptfs}/lib/security/pam_ecryptfs.so
           '' +
+          optionalString config.security.pam.zfs.enableEncryptedHome ''
+            password required ${config.boot.zfs.package}/lib/security/pam_zfs_key.so homes=${config.security.pam.zfs.homes}
+          '' +
           optionalString cfg.pamMount ''
             password optional ${pkgs.pam_mount}/lib/security/pam_mount.so
           '' +
@@ -592,6 +599,9 @@ let
           '' +
           optionalString config.security.pam.enableEcryptfs ''
             session optional ${pkgs.ecryptfs}/lib/security/pam_ecryptfs.so
+          '' +
+          optionalString config.security.pam.zfs.enableEncryptedHome ''
+            session required ${config.boot.zfs.package}/lib/security/pam_zfs_key.so homes=${config.security.pam.zfs.homes}
           '' +
           optionalString cfg.pamMount ''
             session optional ${pkgs.pam_mount}/lib/security/pam_mount.so disable_interactive
@@ -1002,6 +1012,13 @@ in
     };
 
     security.pam.enableEcryptfs = mkEnableOption "eCryptfs PAM module (mounting ecryptfs home directory on login)";
+    security.pam.zfs.enableEncryptedHome = mkEnableOption "ZFS encryption PAM module (mounting encrypted ZFS home directory on login)";
+    security.pam.zfs.homes = mkOption {
+      type = types.str;
+      description = ''
+        The dataset whose children are users' home directories.
+      '';
+    };
 
     users.motd = mkOption {
       default = null;
@@ -1124,6 +1141,9 @@ in
       '' +
       optionalString config.security.pam.enableEcryptfs ''
         mr ${pkgs.ecryptfs}/lib/security/pam_ecryptfs.so,
+      '' +
+      optionalString config.security.pam.zfs.enableEncryptedHome ''
+        mr ${config.boot.zfs.package}/lib/security/pam_zfs_key.so
       '' +
       optionalString (isEnabled (cfg: cfg.pamMount)) ''
         mr ${pkgs.pam_mount}/lib/security/pam_mount.so,

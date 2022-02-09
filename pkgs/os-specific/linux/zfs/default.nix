@@ -10,6 +10,7 @@
 , gawk, gnugrep, gnused, systemd
 , smartmontools, enableMail ? false
 , sysstat, pkg-config
+, pam
 
 # Kernel dependencies
 , kernel ? null
@@ -101,7 +102,7 @@ let
       nativeBuildInputs = [ autoreconfHook269 nukeReferences ]
         ++ optionals buildKernel (kernel.moduleBuildDependencies ++ [ perl ])
         ++ optional buildUser pkg-config;
-      buildInputs = optionals buildUser [ zlib libuuid attr libtirpc ]
+      buildInputs = optionals buildUser [ zlib libuuid attr libtirpc pam ]
         ++ optional buildUser openssl
         ++ optional (buildUser && enablePython) python3;
 
@@ -125,6 +126,7 @@ let
         "--sysconfdir=/etc"
         "--localstatedir=/var"
         "--enable-systemd"
+        "--enable-pam"
       ] ++ optionals buildKernel ([
         "--with-linux=${kernel.dev}/lib/modules/${kernel.modDirVersion}/source"
         "--with-linux-obj=${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
