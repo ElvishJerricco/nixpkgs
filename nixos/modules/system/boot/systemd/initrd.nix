@@ -68,18 +68,10 @@ let
     "systemd-reboot.service"
     "systemd-sysctl.service"
     "systemd-tmpfiles-setup-dev.service"
-    "systemd-tmpfiles-setup.service"
+    # This imposes an ordering that prevents remote access during disk unlock
+    # "systemd-tmpfiles-setup.service"
     "timers.target"
     "umount.target"
-
-    # TODO: Networking
-    # "network-online.target"
-    # "network-pre.target"
-    # "network.target"
-    # "nss-lookup.target"
-    # "nss-user-lookup.target"
-    # "remote-fs-pre.target"
-    # "remote-fs.target"
   ] ++ cfg.additionalUpstreamUnits;
 
   upstreamWants = [

@@ -1,12 +1,10 @@
-{ config, lib, pkgs, utils, ... }:
+{ config, options, lib, pkgs, utils, ... }:
 
 with utils.systemdUtils.unitOptions;
 with utils.systemdUtils.lib;
 with lib;
 
 let
-
-  cfg = config.systemd.network;
 
   check = {
 
@@ -1847,14 +1845,12 @@ let
         + def.extraConfig;
     };
 
-  unitFiles = listToAttrs (map (name: {
+  unitFiles = cfg: listToAttrs (map (name: {
     name = "systemd/network/${name}";
     value.source = "${cfg.units.${name}.unit}/${name}";
   }) (attrNames cfg.units));
-in
 
-{
-  options = {
+  commonOptions = {
 
     systemd.network.enable = mkOption {
       default = false;
@@ -1957,12 +1953,13 @@ in
 
   };
 
-  config = mkMerge [
+  commonConfig = config: let cfg = config.systemd.network; in mkMerge [
 
     # .link units are honored by udev, no matter if systemd-networkd is enabled or not.
     {
+      environment.etc = unitFiles config.systemd.network;
+
       systemd.network.units = mapAttrs' (n: v: nameValuePair "${n}.link" (linkToUnit n v)) cfg.links;
-      environment.etc = unitFiles;
 
       systemd.network.wait-online.extraArgs =
         [ "--timeout=${toString cfg.wait-online.timeout}" ]
@@ -1972,13 +1969,7 @@ in
 
     (mkIf config.systemd.network.enable {
 
-      users.users.systemd-network.group = "systemd-network";
-
-      systemd.additionalUpstreamSystemUnits = [
-        "systemd-networkd-wait-online.service"
-        "systemd-networkd.service"
-        "systemd-networkd.socket"
-      ];
+      environment.etc."systemd/networkd.conf" = renderConfig cfg.config;
 
       systemd.network.units = mapAttrs' (n: v: nameValuePair "${n}.netdev" (netdevToUnit n v)) cfg.netdevs
         // mapAttrs' (n: v: nameValuePair "${n}.network" (networkToUnit n v)) cfg.networks;
@@ -1987,14 +1978,6 @@ in
       # messages. It is important to have systemd buffer those on behalf of
       # networkd.
       systemd.sockets.systemd-networkd.wantedBy = [ "sockets.target" ];
-
-      systemd.services.systemd-networkd = {
-        wantedBy = [ "multi-user.target" ];
-        aliases = [ "dbus-org.freedesktop.network1.service" ];
-        restartTriggers = map (x: x.source) (attrValues unitFiles) ++ [
-          config.environment.etc."systemd/networkd.conf".source
-        ];
-      };
 
       systemd.services.systemd-networkd-wait-online = {
         inherit (cfg.wait-online) enable;
@@ -2017,7 +2000,30 @@ in
         };
       };
 
-      environment.etc."systemd/networkd.conf" = renderConfig cfg.config;
+    })
+  ];
+
+  stage2Config = let cfg = config.systemd.network; in mkMerge [
+    (commonConfig config)
+
+    (mkIf config.systemd.network.enable {
+
+      users.users.systemd-network.group = "systemd-network";
+
+      systemd.additionalUpstreamSystemUnits = [
+        "systemd-networkd-wait-online.service"
+        "systemd-networkd.service"
+        "systemd-networkd.socket"
+      ];
+
+      systemd.services.systemd-networkd = {
+        wantedBy = [ "multi-user.target" ];
+        restartTriggers = map (x: x.source) (attrValues (unitFiles config.systemd.network)) ++ [
+          config.environment.etc."systemd/networkd.conf".source
+        ];
+      };
+
+      systemd.services.systemd-networkd.aliases = [ "dbus-org.freedesktop.network1.service" ];
 
       networking.iproute2 = mkIf (cfg.config.addRouteTablesToIPRoute2 && cfg.config.routeTables != { }) {
         enable = mkDefault true;
@@ -2029,6 +2035,68 @@ in
       };
 
       services.resolved.enable = mkDefault true;
+
+    })
+  ];
+
+  stage1Config = mkMerge [
+    (commonConfig config.boot.initrd)
+
+    { systemd.network.enable = mkDefault config.boot.initrd.network.enable; }
+
+    (mkIf config.boot.initrd.systemd.network.enable {
+
+      systemd.package = pkgs.systemdStage1Network;
+
+      systemd.additionalUpstreamUnits = [
+        "systemd-networkd-wait-online.service"
+        "systemd-networkd.service"
+        "systemd-networkd.socket"
+        "systemd-network-generator.service"
+        "network-online.target"
+        "network-pre.target"
+        "network.target"
+        "nss-lookup.target"
+        "nss-user-lookup.target"
+        "remote-fs-pre.target"
+        "remote-fs.target"
+      ];
+      systemd.users.systemd-network = {};
+      systemd.groups.systemd-network = {};
+
+      systemd.services.systemd-networkd.wantedBy = [ "initrd.target" ];
+      systemd.services.systemd-network-generator.wantedBy = [ "sysinit.target" ];
+
+      systemd.storePaths = [
+        "${config.boot.initrd.systemd.package}/lib/systemd/systemd-networkd"
+        "${config.boot.initrd.systemd.package}/lib/systemd/systemd-networkd-wait-online"
+        "${config.boot.initrd.systemd.package}/lib/systemd/systemd-network-generator"
+        "${config.boot.initrd.systemd.package}/lib/systemd/network/99-default.link"
+      ];
+      kernelModules = [ "af_packet" ];
+
+    })
+  ];
+
+in
+
+{
+  options = commonOptions // {
+    boot.initrd = commonOptions;
+  };
+
+  config = mkMerge [
+    stage2Config
+    (mkIf config.boot.initrd.systemd.enable {
+      assertions = [{
+        assertion = config.boot.initrd.network.udhcpc.extraArgs == [];
+        message = ''
+          boot.initrd.network.udhcpc.extraArgs is not supported when
+          boot.initrd.systemd.enable is enabled
+        '';
+      }];
+
+      boot.initrd = stage1Config;
     })
   ];
 }
