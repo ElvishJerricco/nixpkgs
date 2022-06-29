@@ -131,6 +131,13 @@ let
   };
 
 in {
+  options.boot.initrd.environment.etc = mkOption {
+    visible = false;
+    default = {};
+    type = utils.systemdUtils.types.initrdContents;
+    description = "Set of files that have to be linked in /etc";
+  };
+
   options.boot.initrd.systemd = {
     enable = mkEnableOption (lib.mdDoc "systemd in initrd") // {
       description = lib.mdDoc ''
@@ -347,6 +354,37 @@ in {
       "tpm-tis" "tpm-crb" # systemd-cryptenroll
     ];
 
+    boot.initrd.environment.etc = {
+      "systemd/system".source = stage1Units;
+
+      "systemd/system.conf".text = ''
+        [Manager]
+        DefaultEnvironment=PATH=/bin:/sbin
+        ${cfg.extraConfig}
+      '';
+
+      "modules-load.d/nixos.conf".text = concatStringsSep "\n" config.boot.initrd.kernelModules;
+
+      "passwd".source = "${pkgs.fakeNss}/etc/passwd";
+      # We can use either ! or * to lock the root account in the
+      # console, but some software like OpenSSH won't even allow you
+      # to log in with an SSH key if you use ! so we use * instead
+      "shadow".text = "root:${if isBool cfg.emergencyAccess then optionalString (!cfg.emergencyAccess) "*" else cfg.emergencyAccess}:::::::";
+
+      "sysctl.d/nixos.conf".text = "kernel.modprobe = /sbin/modprobe";
+      "modprobe.d/systemd.conf".source = "${cfg.package}/lib/modprobe.d/systemd.conf";
+      "modprobe.d/ubuntu.conf".source = pkgs.runCommand "initrd-kmod-blacklist-ubuntu" { } ''
+        ${pkgs.buildPackages.perl}/bin/perl -0pe 's/## file: iwlwifi.conf(.+?)##/##/s;' $src > $out
+      '';
+      "modprobe.d/debian.conf".source = pkgs.kmod-debian-aliases;
+
+      "os-release".source = config.boot.initrd.osRelease;
+      "initrd-release".source = config.boot.initrd.osRelease;
+
+    } // optionalAttrs (config.environment.etc ? "modprobe.d/nixos.conf") {
+      "modprobe.d/nixos.conf".source = config.environment.etc."modprobe.d/nixos.conf".source;
+    };
+
     boot.initrd.systemd = {
       initrdBin = [pkgs.bash pkgs.coreutils cfg.package.kmod cfg.package] ++ config.system.fsPackages;
       extraBin = {
@@ -357,41 +395,20 @@ in {
 
       contents = {
         "/init".source = "${cfg.package}/lib/systemd/systemd";
-        "/etc/systemd/system".source = stage1Units;
-
-        "/etc/systemd/system.conf".text = ''
-          [Manager]
-          DefaultEnvironment=PATH=/bin:/sbin
-          ${cfg.extraConfig}
-        '';
-
         "/lib/modules".source = "${modulesClosure}/lib/modules";
         "/lib/firmware".source = "${modulesClosure}/lib/firmware";
-
-        "/etc/modules-load.d/nixos.conf".text = concatStringsSep "\n" config.boot.initrd.kernelModules;
-
-        "/etc/passwd".source = "${pkgs.fakeNss}/etc/passwd";
-        # We can use either ! or * to lock the root account in the
-        # console, but some software like OpenSSH won't even allow you
-        # to log in with an SSH key if you use ! so we use * instead
-        "/etc/shadow".text = "root:${if isBool cfg.emergencyAccess then optionalString (!cfg.emergencyAccess) "*" else cfg.emergencyAccess}:::::::";
 
         "/bin".source = "${initrdBinEnv}/bin";
         "/sbin".source = "${initrdBinEnv}/sbin";
 
-        "/etc/sysctl.d/nixos.conf".text = "kernel.modprobe = /sbin/modprobe";
-        "/etc/modprobe.d/systemd.conf".source = "${cfg.package}/lib/modprobe.d/systemd.conf";
-        "/etc/modprobe.d/ubuntu.conf".source = pkgs.runCommand "initrd-kmod-blacklist-ubuntu" { } ''
-          ${pkgs.buildPackages.perl}/bin/perl -0pe 's/## file: iwlwifi.conf(.+?)##/##/s;' $src > $out
-        '';
-        "/etc/modprobe.d/debian.conf".source = pkgs.kmod-debian-aliases;
-
-        "/etc/os-release".source = config.boot.initrd.osRelease;
-        "/etc/initrd-release".source = config.boot.initrd.osRelease;
-
-      } // optionalAttrs (config.environment.etc ? "modprobe.d/nixos.conf") {
-        "/etc/modprobe.d/nixos.conf".source = config.environment.etc."modprobe.d/nixos.conf".source;
-      };
+      } // lib.mapAttrs' (n: v: {
+        name = "/etc/${n}";
+        value = {
+          target = "/etc/${v.target}";
+          ${if v.text != null then "text" else null} = v.text;
+          ${if v.text == null then "source" else null} = v.source;
+        };
+      }) config.boot.initrd.environment.etc;
 
       storePaths = [
         # systemd tooling
