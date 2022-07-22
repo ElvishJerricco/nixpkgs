@@ -244,6 +244,53 @@ in {
       default = false;
     };
 
+    users = mkOption {
+      visible = false;
+      description = ''
+        Users to include in initrd.
+      '';
+      default = {};
+      type = types.attrsOf (types.submodule ({ name, ... }: {
+        options.uid = mkOption {
+          visible = false;
+          type = types.int;
+          description = ''
+            ID of the user in initrd.
+          '';
+          defaultText = literalExpression "config.users.users.\${name}.uid";
+          default = config.users.users.${name}.uid;
+        };
+        options.group = mkOption {
+          visible = false;
+          type = types.singleLineStr;
+          description = ''
+            Group the user belongs to in initrd.
+          '';
+          defaultText = literalExpression "config.users.users.\${name}.group";
+          default = config.users.users.${name}.group;
+        };
+      }));
+    };
+
+    groups = mkOption {
+      visible = false;
+      description = ''
+        Groups to include in initrd.
+      '';
+      default = {};
+      type = types.attrsOf (types.submodule ({ name, ... }: {
+        options.gid = mkOption {
+          visible = false;
+          type = types.int;
+          description = ''
+            ID of the group in initrd.
+          '';
+          defaultText = literalExpression "config.users.groups.\${name}.gid";
+          default = config.users.groups.${name}.gid;
+        };
+      }));
+    };
+
     initrdBin = mkOption {
       type = types.listOf types.package;
       default = [];
@@ -379,7 +426,14 @@ in {
 
       "modules-load.d/nixos.conf".text = concatStringsSep "\n" config.boot.initrd.kernelModules;
 
-      "passwd".source = "${pkgs.fakeNss}/etc/passwd";
+      "passwd".text = ''
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: { uid, group }: let
+          g = cfg.groups.${group};
+        in "${n}:x:${toString uid}:${toString g.gid}:::") cfg.users)}
+      '';
+      "group".text = ''
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: { gid }: "${n}:x:${toString gid}:") cfg.groups)}
+      '';
       # We can use either ! or * to lock the root account in the
       # console, but some software like OpenSSH won't even allow you
       # to log in with an SSH key if you use ! so we use * instead
@@ -465,6 +519,31 @@ in {
         "${cfg.package}/lib/cryptsetup/libcryptsetup-token-systemd-fido2.so"
         "${pkgs.libfido2}/lib/libfido2.so.1"
       ] ++ jobScripts;
+
+      users = {
+        root = {};
+        nobody = {};
+      };
+
+      groups = {
+        root = {};
+        nogroup = {};
+        systemd-journal = {};
+        tty = {};
+        dialout = {};
+        kmem = {};
+        input = {};
+        video = {};
+        render = {};
+        sgx = {};
+        audio = {};
+        video = {};
+        lp = {};
+        disk = {};
+        cdrom = {};
+        tape = {};
+        kvm = {};
+      };
 
       targets.initrd.aliases = ["default.target"];
       units =
