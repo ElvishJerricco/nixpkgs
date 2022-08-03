@@ -5,6 +5,10 @@ with lib;
 let
 
   cfg = config.boot.initrd.network.ssh;
+  shell = if cfg.shell == null then "/bin/ash" else cfg.shell;
+  inherit (config.programs.ssh) package;
+
+  enabled = let initrd = config.boot.initrd; in (initrd.network.enable || initrd.systemd.network.enable) && cfg.enable;
 
 in
 
@@ -33,8 +37,9 @@ in
     };
 
     shell = mkOption {
-      type = types.str;
-      default = "/bin/ash";
+      type = types.nullOr types.str;
+      default = null;
+      defaultText = ''"/bin/ash"'';
       description = lib.mdDoc ''
         Login shell of the remote user. Can be used to limit actions user can do.
       '';
@@ -119,9 +124,11 @@ in
     sshdCfg = config.services.openssh;
 
     sshdConfig = ''
+      UsePAM no
       Port ${toString cfg.port}
 
       PasswordAuthentication no
+      AuthorizedKeysFile %h/.ssh/authorized_keys %h/.ssh/authorized_keys2 /etc/ssh/authorized_keys.d/%u
       ChallengeResponseAuthentication no
 
       ${flip concatMapStrings cfg.hostKeys (path: ''
@@ -142,7 +149,7 @@ in
 
       ${cfg.extraConfig}
     '';
-  in mkIf (config.boot.initrd.network.enable && cfg.enable) {
+  in mkIf enabled {
     assertions = [
       {
         assertion = cfg.authorizedKeys != [];
@@ -157,10 +164,15 @@ in
           for instructions.
         '';
       }
+
+      {
+        assertion = config.boot.initrd.systemd.enable -> cfg.shell == null;
+        message = "systemd stage 1 does not support boot.initrd.network.ssh.shell";
+      }
     ];
 
     boot.initrd.extraUtilsCommands = ''
-      copy_bin_and_libs ${pkgs.openssh}/bin/sshd
+      copy_bin_and_libs ${package}/bin/sshd
       cp -pv ${pkgs.glibc.out}/lib/libnss_files.so.* $out/lib
     '';
 
@@ -177,8 +189,8 @@ in
     '';
 
     boot.initrd.network.postCommands = ''
-      echo '${cfg.shell}' > /etc/shells
-      echo 'root:x:0:0:root:/root:${cfg.shell}' > /etc/passwd
+      echo '${shell}' > /etc/shells
+      echo 'root:x:0:0:root:/root:${shell}' > /etc/passwd
       echo 'sshd:x:1:1:sshd:/var/empty:/bin/nologin' >> /etc/passwd
       echo 'passwd: files' > /etc/nsswitch.conf
 
@@ -217,6 +229,39 @@ in
 
     boot.initrd.secrets = listToAttrs
       (map (path: nameValuePair (initrdKeyPath path) path) cfg.hostKeys);
+
+    # Systemd initrd stuff
+    boot.initrd.environment.etc = mkIf config.boot.initrd.systemd.enable {
+      "ssh/authorized_keys.d/root" = {
+        text = concatStringsSep "\n" config.boot.initrd.network.ssh.authorizedKeys;
+      };
+      "ssh/sshd_config".text = sshdConfig;
+    };
+    boot.initrd.systemd = mkIf config.boot.initrd.systemd.enable {
+      users.sshd = { uid = 1; group = "sshd"; };
+      groups.sshd = { gid = 1; };
+
+      storePaths = ["${package}/bin/sshd"];
+
+      services.sshd = {
+        description = "SSH Daemon";
+        wantedBy = ["initrd.target"];
+        after = ["network.target" "initrd-nixos-copy-secrets.service"];
+
+        # Keys from Nix store are world-readable, which sshd doesn't
+        # like. If this were a real nix store and not the initrd, we
+        # neither would nor could do this
+        preStart = flip concatMapStrings cfg.hostKeys (path: ''
+          /bin/chmod 0600 "${initrdKeyPath path}"
+        '');
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = {
+          ExecStart = "${package}/bin/sshd -D -f /etc/ssh/sshd_config";
+          Type = "simple";
+        };
+      };
+    };
+
   };
 
 }
