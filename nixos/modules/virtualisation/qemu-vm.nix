@@ -97,8 +97,8 @@ let
     imap1 (idx: drive: drive // { device = driveDeviceName idx; });
 
   efiPrefix =
-    if pkgs.stdenv.hostPlatform.isx86 then "${pkgs.OVMF.fd}/FV/OVMF"
-    else if pkgs.stdenv.isAarch64 then "${pkgs.OVMF.fd}/FV/AAVMF"
+    if pkgs.stdenv.hostPlatform.isx86 then "${cfg.ovmfPackage.fd}/FV/OVMF"
+    else if pkgs.stdenv.isAarch64 then "${cfg.ovmfPackage.fd}/FV/AAVMF"
     else throw "No EFI firmware available for platform";
   efiFirmware = "${efiPrefix}_CODE.fd";
   efiVarsDefault = "${efiPrefix}_VARS.fd";
@@ -199,7 +199,7 @@ let
                 chmod 0644 $efiVars
               '' else ""}
             '';
-          buildInputs = [ pkgs.util-linux ];
+          buildInputs = [ pkgs.util-linux ] ++ optionals cfg.secureboot.enable [pkgs.sbctl];
           QEMU_OPTS = "-nographic -serial stdio -monitor none"
                       + lib.optionalString cfg.useEFIBoot (
                         " -drive if=pflash,format=raw,unit=0,readonly=on,file=${efiFirmware}"
@@ -259,6 +259,11 @@ let
           mkdir -p /nix/var/nix/profiles
           ln -s ${config.system.build.toplevel} /nix/var/nix/profiles/system-1-link
           ln -s /nix/var/nix/profiles/system-1-link /nix/var/nix/profiles/system
+
+          ${optionalString cfg.secureboot.enable ''
+            ln -s ${cfg.secureboot.keyDir} /etc/secureboot
+            sbctl enroll-keys --yes-this-might-brick-my-machine
+          ''}
 
           # Install bootloader
           touch /etc/NIXOS
@@ -683,6 +688,25 @@ in
             useEFIBoot is ignored if useBootLoader == false.
           '';
       };
+
+    virtualisation.ovmfPackage =
+      mkOption {
+        type = types.package;
+        default = pkgs.OVMF;
+        example = "pkgs.OVMFFull";
+        description = "OVMF package to use when EFI booting.";
+      };
+
+    virtualisation.secureboot = {
+      enable = mkEnableOption "secure boot enrollment when EFI booting";
+      keyDir = mkOption {
+        type = types.path;
+        description = ''
+          Path to sbctl style /etc/secureboot directory. Will be added
+          to the nix store.
+        '';
+      };
+    };
 
     virtualisation.useDefaultFilesystems =
       mkOption {
