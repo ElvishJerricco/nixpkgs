@@ -2,11 +2,11 @@
 
 python3.pkgs.buildPythonApplication rec {
   pname = "lit";
-  version = "14.0.0";
+  version = "15.0.1";
 
   src = python3.pkgs.fetchPypi {
     inherit pname version;
-    sha256 = "45e08ce87b0ea56ab632aa02fa857418a5dd241a711c7c756878b73a130c3efe";
+    sha256 = "84ae8245d4f4dcb4562d7b95b6fecd53a7b3562af1e348949ce8794969a3a9b6";
   };
 
   passthru = {
