@@ -951,7 +951,7 @@ class Machine:
         def check_x(_: Any) -> bool:
             cmd = (
                 "journalctl -b SYSLOG_IDENTIFIER=systemd | "
-                + 'grep "Reached target Current graphical"'
+                + 'grep "Reached target graphical-session.target"'
             )
             status, _ = self.execute(cmd)
             if status != 0:
