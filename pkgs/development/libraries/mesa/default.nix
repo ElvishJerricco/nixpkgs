@@ -49,6 +49,7 @@ let
       clang = llvmPackages.clang;
     };
   };
+  withLibdrm = lib.meta.availableOn stdenv.hostPlatform libdrm;
 
 self = stdenv.mkDerivation {
   pname = "mesa";
@@ -164,7 +165,7 @@ self = stdenv.mkDerivation {
 
   propagatedBuildInputs = with xorg; [
     libXdamage libXxf86vm
-  ] ++ optional stdenv.isLinux libdrm
+  ] ++ optional withLibdrm libdrm
     ++ optionals stdenv.isDarwin [ OpenGL Xplugin ];
 
   doCheck = false;
@@ -256,9 +257,10 @@ self = stdenv.mkDerivation {
   ];
 
   passthru = {
-    inherit libdrm;
     inherit (libglvnd) driverLink;
     inherit llvmPackages;
+
+    libdrm = if withLibdrm then libdrm else null;
 
     tests = lib.optionalAttrs stdenv.isLinux {
       devDoesNotDependOnLLVM = stdenv.mkDerivation {
