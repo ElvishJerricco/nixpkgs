@@ -1137,6 +1137,7 @@ in
           value.device = tag;
           value.fsType = "9p";
           value.neededForBoot = true;
+          value.viaCmdline = tag == "nix-store" && cfg.writableStore;
           value.options =
             [ "trans=virtio" "version=9p2000.L"  "msize=${toString cfg.msize}" ]
             ++ lib.optional (tag == "nix-store") "cache=loose";
@@ -1162,11 +1163,13 @@ in
           device = "/dev/disk/by-label/${nixStoreFilesystemLabel}";
           neededForBoot = true;
           options = [ "ro" ];
+          viaCmdline = true;
         };
         "/nix/.rw-store" = lib.mkIf (cfg.writableStore && cfg.writableStoreUseTmpfs) {
           fsType = "tmpfs";
           options = [ "mode=0755" ];
           neededForBoot = true;
+          viaCmdline = true;
         };
         "/boot" = lib.mkIf (cfg.useBootLoader && cfg.bootPartition != null) {
           device = cfg.bootPartition;

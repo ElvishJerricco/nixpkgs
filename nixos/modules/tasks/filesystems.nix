@@ -22,6 +22,9 @@ let
                      # their assertions too
                      (attrValues config.fileSystems);
 
+  rootfs = config.fileSystems."/";
+  usrfs = config.fileSystems."/usr" or null;
+
   specialFSTypes = [ "proc" "sysfs" "tmpfs" "ramfs" "devtmpfs" "devpts" ];
 
   nonEmptyWithoutTrailingSlash = addCheckDesc "non-empty without trailing slash" types.str
@@ -134,6 +137,15 @@ let
         description = lib.mdDoc "Disable running fsck on this filesystem.";
       };
 
+      viaCmdline = mkOption {
+        default = false;
+        type = types.bool;
+        description = lib.mdDoc ''
+          Whether to configure on the cmdline with
+          systemd.mount-extra. Usually only relevant for systemd stage 1.
+        '';
+      };
+
     };
 
     config.options = mkMerge [
@@ -187,7 +199,7 @@ let
       skipCheck = fs: fs.noCheck || fs.device == "none" || builtins.elem fs.fsType fsToSkipCheck || isBindMount fs;
       # https://wiki.archlinux.org/index.php/fstab#Filepath_spaces
       escape = string: builtins.replaceStrings [ " " "\t" ] [ "\\040" "\\011" ] string;
-    in fstabFileSystems: { rootPrefix ? "" }: concatMapStrings (fs:
+    in fstabFileSystems: concatMapStrings (fs:
       (optionalString (isBindMount fs) (escape rootPrefix))
       + (if fs.device != null then escape fs.device
          else if fs.label != null then "/dev/disk/by-label/${escape fs.label}"
@@ -199,9 +211,7 @@ let
       + "\n"
     ) fstabFileSystems;
 
-    initrdFstab = pkgs.writeText "initrd-fstab" (makeFstabEntries (filter utils.fsNeededForBoot fileSystems) {
-      rootPrefix = "/sysroot";
-    });
+    fsViaCmdline = fs: fs.viaCmdline || fs.mountPoint == "/nix" || fs.mountPoint == "/nix/store";
 
 in
 
@@ -361,7 +371,7 @@ in
         # <file system> <mount point>   <type>  <options>       <dump>  <pass>
 
         # Filesystems.
-        ${makeFstabEntries fileSystems {}}
+        ${makeFstabEntries (filter (fs: !fsViaCmdline fs) fileSystems)}
 
         # Swap devices.
         ${flip concatMapStrings config.swapDevices (sw:
@@ -369,9 +379,49 @@ in
         )}
       '';
 
-    boot.initrd.systemd.storePaths = [initrdFstab];
-    boot.initrd.systemd.managerEnvironment.SYSTEMD_SYSROOT_FSTAB = initrdFstab;
-    boot.initrd.systemd.services.initrd-parse-etc.environment.SYSTEMD_SYSROOT_FSTAB = initrdFstab;
+    boot.kernelParams = let
+      fsToCmdline = fs: "systemd.mount-extra=${fs.device}:${fs.mountPoint}:${fs.fsType}:${concatStringsSep "," fs.options}";
+    in lib.mkIf config.boot.initrd.systemd.enable ([
+      "root=${rootfs.device}"
+      "rootfstype=${rootfs.fsType}"
+      "rootflags=${concatStringsSep "," rootfs.options}"
+      "rw"
+    ] ++ lib.optionals (usrfs != null) [
+      "mount.usr=${usrfs.device}"
+      "mount.usrfstype=${usrfs.fsType}"
+      "mount.usrflags=${concatStringsSep "," usrfs.options}"
+    ] ++ map fsToCmdline (filter fsViaCmdline fileSystems));
+    boot.initrd.systemd = lib.mkIf config.boot.initrd.systemd.enable {
+      targets.initrd-root-fs.unitConfig.RequiresMountsFor = "/sysroot/nix/store";
+      services.initrd-parse-etc.serviceConfig.EnvironmentFile = "/etc/initrd-parse-etc.conf";
+      services.load-fstab = {
+        requiredBy = [ "initrd-parse-etc.service" ];
+        before = [ "initrd-parse-etc.service" ];
+        unitConfig.DefaultDependencies = false;
+        serviceConfig.Type = "oneshot";
+        script = ''
+          # Figure out what closure to boot
+          closure=
+          for o in $(< /proc/cmdline); do
+              case $o in
+                  init=*)
+                      IFS== read -r -a initParam <<< "$o"
+                      closure="$(dirname "''${initParam[1]}")"
+                      ;;
+              esac
+          done
+
+          # Sanity check
+          if [ -z "''${closure:-}" ]; then
+            echo 'No init= parameter on the kernel command line' >&2
+            exit 1
+          fi
+
+          echo "SYSTEMD_SYSROOT_FSTAB=\"$closure\"/etc/fstab" > /etc/initrd-parse-etc.conf
+          systemctl set-environment "SYSTEMD_SYSROOT_FSTAB=\"$closure\"/etc/fstab"
+        '';
+      };
+    };
 
     # Provide a target that pulls in all filesystems.
     systemd.targets.fs =
