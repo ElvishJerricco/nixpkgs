@@ -22,6 +22,9 @@ let
                      # their assertions too
                      (attrValues config.fileSystems);
 
+  rootfs = config.fileSystems."/";
+  usrfs = config.fileSystems."/usr" or null;
+
   specialFSTypes = [ "proc" "sysfs" "tmpfs" "ramfs" "devtmpfs" "devpts" ];
 
   nonEmptyWithoutTrailingSlash = addCheckDesc "non-empty without trailing slash" types.str
@@ -361,6 +364,16 @@ in
     boot.initrd.systemd.storePaths = [initrdFstab];
     boot.initrd.systemd.managerEnvironment.SYSTEMD_SYSROOT_FSTAB = initrdFstab;
     boot.initrd.systemd.services.initrd-parse-etc.environment.SYSTEMD_SYSROOT_FSTAB = initrdFstab;
+    boot.kernelParams = lib.mkIf config.boot.initrd.systemd.enable ([
+      "root=${rootfs.device}"
+      "rootfstype=${rootfs.fsType}"
+      "rootflags=${concatStringsSep "," rootfs.options}"
+      "rw"
+    ] ++ lib.optionals (usrfs != null) [
+      "mount.usr=${usrfs.device}"
+      "mount.usrfstype=${usrfs.fsType}"
+      "mount.usrflags=${concatStringsSep "," usrfs.options}"
+    ]);
 
     # Provide a target that pulls in all filesystems.
     systemd.targets.fs =
