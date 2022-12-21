@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Will Fancher <elvishjerricco@gmail.com>
+Date: Wed, 21 Dec 2022 08:51:15 -0500
+Subject: [PATCH] initrd: Order mounts after local-fs-pre.target
+
+We may not need them in local-fs, as initrd-fs is the appropriate target, but
+there are still things that are ordered before local-fs-pre that we ought to
+respect.
+---
+ src/core/mount.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/core/mount.c b/src/core/mount.c
+index be46e56689..eda5e8280d 100644
+--- a/src/core/mount.c
++++ b/src/core/mount.c
+@@ -485,7 +485,7 @@ static int mount_add_default_ordering_dependencies(Mount *m, MountParameters *p,
+                  * it's not technically part of the basic initrd filesystem itself, and so
+                  * shouldn't inherit the default Before=local-fs.target dependency. */
+ 
+-                after = NULL;
++                after = SPECIAL_LOCAL_FS_PRE_TARGET;
+                 before = isempty(e) ? SPECIAL_INITRD_ROOT_FS_TARGET : SPECIAL_INITRD_FS_TARGET;
+ 
+         } else if (mount_is_network(p)) {

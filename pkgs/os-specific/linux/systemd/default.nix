@@ -170,6 +170,7 @@ stdenv.mkDerivation {
     ./0019-sysroot-Order-systemd-fsck-root-after-systemd-makefs.patch
     ./0020-sysroot-Support-x-systemd.makefs.patch
     ./0021-sysroot-Support-x-systemd.growfs.patch
+    ./0022-initrd-Order-mounts-after-local-fs-pre.target.patch
   ] ++ lib.optional stdenv.hostPlatform.isMusl (
     let
       oe-core = fetchzip {
