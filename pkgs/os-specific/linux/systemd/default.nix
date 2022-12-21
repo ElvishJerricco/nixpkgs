@@ -167,6 +167,7 @@ stdenv.mkDerivation {
     ./0016-pkg-config-derive-prefix-from-prefix.patch
     ./0017-inherit-systemd-environment-when-calling-generators.patch
     ./0018-core-don-t-taint-on-unmerged-usr.patch
+    ./0019-sysroot-Order-systemd-fsck-root-after-systemd-makefs.patch
   ] ++ lib.optional stdenv.hostPlatform.isMusl (
     let
       oe-core = fetchzip {
