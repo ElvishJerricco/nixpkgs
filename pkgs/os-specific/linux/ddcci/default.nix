@@ -25,6 +25,8 @@ stdenv.mkDerivation rec {
       --replace depmod \#
   '';
 
+  patches = [./0001-Fix-for-6.1.patch];
+
   makeFlags = kernel.makeFlags ++ [
     "KDIR=${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
     "KVER=${kernel.modDirVersion}"
