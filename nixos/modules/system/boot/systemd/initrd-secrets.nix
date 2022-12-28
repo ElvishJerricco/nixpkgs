@@ -25,7 +25,7 @@
         done
       '';
 
-      unitConfig = {
+      serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
