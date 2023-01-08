@@ -22,7 +22,7 @@
 # broken for Ampere eMAG 8180 (c2.large.arm on Packet) #56245
 # broken for the armv7l builder
 , enablePFM ? stdenv.isLinux && !stdenv.hostPlatform.isAarch
-, enablePolly ? false
+, enablePolly ? true
 } @args:
 
 let
@@ -42,7 +42,8 @@ in stdenv.mkDerivation (rec {
     cp -r ${monorepoSrc}/${pname} "$out"
     cp -r ${monorepoSrc}/third-party "$out"
   '' + lib.optionalString enablePolly ''
-    cp -r ${monorepoSrc}/polly "$out/llvm/tools"
+    chmod u+w "$out/${pname}/tools"
+    cp -r ${monorepoSrc}/polly "$out/${pname}/tools"
   '');
 
   sourceRoot = "${src.name}/${pname}";
@@ -61,7 +62,7 @@ in stdenv.mkDerivation (rec {
 
   patches = [
     ./gnu-install-dirs.patch
-  ] ++ lib.optional enablePolly ./gnu-install-dirs-polly.patch;
+  ];
 
   postPatch = optionalString stdenv.isDarwin ''
     substituteInPlace cmake/modules/AddLLVM.cmake \
