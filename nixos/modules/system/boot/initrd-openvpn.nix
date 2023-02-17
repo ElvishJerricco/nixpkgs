@@ -59,6 +59,13 @@ in
       cp -pv ${pkgs.glibc}/lib/libnss_dns.so.2 $out/lib
     '';
 
+    boot.initrd.systemd.storePaths = [
+      "${pkgs.openvpn}/bin/openvpn"
+      "${pkgs.iproute2}/bin/ip"
+      "${pkgs.glibc}/lib/libresolv.so.2"
+      "${pkgs.glibc}/lib/libnss_dns.so.2"
+    ];
+
     boot.initrd.secrets = {
       "/etc/initrd.ovpn" = cfg.configuration;
     };
@@ -71,6 +78,15 @@ in
     boot.initrd.network.postCommands = ''
       openvpn /etc/initrd.ovpn &
     '';
+
+    boot.initrd.systemd.services.openvpn = {
+      wantedBy = ["initrd.target"];
+      path = [pkgs.iproute2];
+      after = ["network.target" "initrd-nixos-copy-secrets.service"];
+      serviceConfig.ExecStartPre = "/bin/mkdir /tmp";
+      serviceConfig.ExecStart = "${pkgs.openvpn}/bin/openvpn /etc/initrd.ovpn";
+      serviceConfig.Type = "notify";
+    };
   };
 
 }
