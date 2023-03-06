@@ -3171,6 +3171,26 @@ let
       ];
       kernelModules = [ "af_packet" ];
 
+      systemd.services.nixos-flush-networkd = mkIf config.boot.initrd.network.flushBeforeStage2 {
+        description = "Flush Network Configuration";
+        wantedBy = ["initrd.target"];
+        after = ["systemd-networkd.service" "dbus.socket" "dbus.service"];
+        serviceConfig = {
+          # This service does nothing when starting, but brings down
+          # interfaces when switching root. This is the easiest way to
+          # ensure proper ordering while stopping
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "/bin/true";
+        };
+        preStop = ''
+          networkctl list --full --no-legend | while read _idx link _type _operational setup _; do
+            [ "$setup" = unmanaged ] && continue
+            networkctl down "$link"
+          done
+        '';
+      };
+
     })
   ];
 
