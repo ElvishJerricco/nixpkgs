@@ -1,0 +1,15 @@
+diff --git a/FatPkg/EnhancedFatDxe/ReadWrite.c b/FatPkg/EnhancedFatDxe/ReadWrite.c
+index 8f525044d1..1fed0fecce 100644
+--- a/FatPkg/EnhancedFatDxe/ReadWrite.c
++++ b/FatPkg/EnhancedFatDxe/ReadWrite.c
+@@ -216,6 +216,10 @@ FatIFileAccess (
+   Volume = OFile->Volume;
+   Task   = NULL;
+ 
++  if (*BufferSize > (10U * 1024U * 1024U)) {
++    return EFI_BAD_BUFFER_SIZE;
++  }
++
+   //
+   // Write to a directory is unsupported
+   //

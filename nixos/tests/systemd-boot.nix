@@ -13,6 +13,18 @@ let
     boot.loader.systemd-boot.enable = true;
     boot.loader.efi.canTouchEfiVariables = true;
     environment.systemPackages = [ pkgs.efibootmgr ];
+
+    virtualisation.efi.firmware = (pkgs.OVMF.overrideAttrs (old: {
+      patches = old.patches or [] ++ [./break-ovmf.patch];
+    })).firmware;
+    systemd.package = pkgs.systemd.overrideAttrs (old: {
+      patches = old.patches or [] ++ [
+        (pkgs.fetchpatch2 {
+          url = "https://github.com/medhefgo/systemd/commit/3ed1d966f00b002ed822ca9de116252bd91fe6c3.patch";
+          hash = "sha256-UPIZMuhaajil8XoOYoyE/Kqb/SGdz3PuZYshlCBbLCw=";
+        })
+      ];
+    });
   };
 in
 {
