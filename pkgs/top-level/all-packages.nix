@@ -9842,6 +9842,8 @@ with pkgs;
 
   jump = callPackage ../tools/system/jump { };
 
+  lanzaboote-stub = callPackage ../tools/system/lanzaboote/stub.nix { };
+
   lanzaboote-tool = callPackage ../tools/system/lanzaboote/tool.nix { };
 
   larynx = callPackage ../tools/audio/larynx { };

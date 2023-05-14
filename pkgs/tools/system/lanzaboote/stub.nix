@@ -1,24 +1,32 @@
-{ rustPlatform, fetchFromGitHub, stdenv, lib }:
+{ rustPlatform, stdenv, lib, fetchFromGitHub }:
 
-rustPlatform.buildRustPackage {
-  pname = "lanzaboote-stub";
+rustPlatform.buildRustPackage
+rec {
+  pname = "lanzaboote_stub";
   version = "0.3.0";
-
   src = fetchFromGitHub {
     owner = "nix-community";
     repo = "lanzaboote";
-    rev = "v0.3.0";
+    rev = "v${version}";
     hash = "sha256-Fb5TeRTdvUlo/5Yi2d+FC8a6KoRLk2h1VE0/peMhWPs=";
   };
 
   sourceRoot = "source/rust/stub";
 
-  cargoHash = "sha256-FlnheCgowYsEHcFMn6k8ESxDuggbO4tNdQlOjUIj7oE=";
+  cargoLock = {
+    lockFile = ./Cargo-stub.lock;
+  };
 
-  # `cc-wrapper`/our clang doesn't understand MSVC link opts (hack):
+  # Necessary because our `cc-wrapper` doesn't understand MSVC link options.
   RUSTFLAGS = "-Clinker=${stdenv.cc.bintools}/bin/${stdenv.cc.targetPrefix}ld.lld -Clinker-flavor=lld-link";
-  NIX_ENFORCE_PURITY = "0";
+  # Necessary because otherwise we will get (useless) hardening options in front of
+  # -flavor link which will break the whole command-line processing for the ld.lld linker.
+  hardeningDisable = [ "all" ];
 
-  # TODO: limit supported platforms to UEFI
-  meta.platforms = lib.platforms.all;
+  meta = with lib; {
+    description = "Lanzaboote UEFI stub for SecureBoot enablement on NixOS systems";
+    homepage = "https://github.com/nix-community/lanzaboote";
+    license = licenses.mit;
+    platforms = [ "x86_64-windows" "aarch64-windows" "i686-windows" ];
+  };
 }
