@@ -16,6 +16,7 @@
             # Don't load the current system profile if we already have a kernel loaded
             if [[ 1 = "$(</sys/kernel/kexec_loaded)" ]] ; then
               echo "kexec kernel has already been loaded, prepare-kexec skipped"
+              echo c > /proc/sysrq-trigger
               exit 0
             fi
 
