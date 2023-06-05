@@ -119,6 +119,7 @@ let
         "systemd-udev-settle.service"
         "systemd-modules-load.service"
         "systemd-ask-password-console.service"
+        "cryptsetup.target"
       ];
       requiredBy = getPoolMounts prefix pool ++ [ "zfs-import.target" ];
       before = getPoolMounts prefix pool ++ [ "zfs-import.target" ];
