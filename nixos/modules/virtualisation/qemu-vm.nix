@@ -188,6 +188,16 @@ let
         fi
       ''}
 
+      ${lib.optionalString cfg.tpm.enable ''
+        NIX_SWTPM_DIR=$(readlink -f "''${NIX_SWTPM_DIR:-${config.system.name}-swtpm}")
+        mkdir -p "$NIX_SWTPM_DIR"
+        ${lib.getExe cfg.tpm.package} \
+          socket \
+          --tpmstate dir="$NIX_SWTPM_DIR" \
+          --ctrl type=unixio,path="$NIX_SWTPM_DIR"/socket \
+          "--tpm2" 1>"$NIX_SWTPM_DIR"/stdout 2>"$NIX_SWTPM_DIR"/stderr &
+      ''}
+
       cd "$TMPDIR"
 
       ${lib.optionalString (cfg.emptyDiskImages != []) "idx=0"}
@@ -1110,7 +1120,7 @@ in
         "-nographic"
       ])
       (mkIf (cfg.tpm.enable) [
-        "-chardev socket,id=chrtpm,path=${cfg.tpm.socketPath}"
+        "-chardev socket,id=chrtpm,path=\"$NIX_SWTPM_DIR\"/socket"
         "-tpmdev emulator,id=tpm_dev_0,chardev=chrtpm"
         "-device ${cfg.tpm.deviceModel},tpmdev=tpm_dev_0"
       ])
