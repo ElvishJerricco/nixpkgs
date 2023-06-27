@@ -129,6 +129,15 @@ To solve this, you can run `fdisk -l $image` and generate `dd if=$image of=$imag
 , # Whether to invoke `switch-to-configuration boot` during image creation
   installBootLoader ? true
 
+, # Whether to format with LUKS
+  luks ? false
+
+, # MiB to reserve for the LUKS header
+  luksSize ? if luks then 40 else 0
+
+, # UUID for the LUKS header
+  luksUUID ? "fde37d28-71b9-4203-8db9-742cfc084bf9"
+
 , # Whether to output have EFIVARS available in $out/efi-vars.fd and use it during disk creation
   touchEFIVars ? false
 
@@ -147,6 +156,9 @@ To solve this, you can run `fdisk -l $image` and generate `dd if=$image of=$imag
 , # Filesystem label
   label ? if onlyNixStore then "nix-store" else "nixos"
 
+, # LUKS volume label
+  luksLabel ? "luks-${label}"
+
 , # The initial NixOS configuration file to be copied to
   # /etc/nixos/configuration.nix.
   configFile ? null
@@ -155,7 +167,7 @@ To solve this, you can run `fdisk -l $image` and generate `dd if=$image of=$imag
   postVM ? ""
 
 , # Guest memory size
-  memSize ? 1024
+  memSize ? 2048
 
 , # Copy the contents of the Nix store to the root of the image and
   # skip further setup. Incompatible with `contents`,
@@ -181,7 +193,7 @@ To solve this, you can run `fdisk -l $image` and generate `dd if=$image of=$imag
 , rootGPUID ? "F222513B-DED1-49FA-B591-20CE86A2FE7F"
   # When fsType = ext4, this is the root Filesystem Unique Identifier.
   # TODO: support other filesystems someday.
-, rootFSUID ? (if fsType == "ext4" then rootGPUID else null)
+, rootFSUID ? (if fsType == "ext4" then "6f5182ed-0fe5-4c6b-98e5-debf42ac10d8" else null)
 
 , # Whether a nix channel based on the current source tree should be
   # made available inside the image. Useful for interactive use of nix
@@ -205,6 +217,7 @@ assert (lib.assertMsg (lib.all
          (attrs: ((attrs.user  or null) == null)
               == ((attrs.group or null) == null))
         contents) "Contents of the disk image should set none of {user, group} or both at the same time.");
+assert ((luksSize == 0) != luks);
 
 with lib;
 
@@ -434,6 +447,7 @@ let format' = format; in let
     ''}
 
     diskImage=nixos.raw
+    fsImage=fs.raw
 
     ${if diskSize == "auto" then ''
       ${if partitionTableType == "efi" || partitionTableType == "hybrid" then ''
@@ -455,7 +469,8 @@ let format' = format; in let
       '' else ''
         reservedSpace=0
       ''}
-      additionalSpace=$(( $(numfmt --from=iec '${additionalSpace}') + reservedSpace ))
+      luksSize=$(( ${toString luksSize} * mebibyte ))
+      additionalSpace=$(( $(numfmt --from=iec '${additionalSpace}') + reservedSpace + luksSize ))
 
       # Compute required space in filesystem blocks
       diskUsage=$(find . ! -type d -print0 | du --files0-from=- --apparent-size --block-size "${blockSize}" | cut -f1 | sum_lines)
@@ -476,8 +491,6 @@ let format' = format; in let
         diskSize=$(( ( diskSize / mebibyte + 1) * mebibyte ))
       fi
 
-      truncate -s "$diskSize" $diskImage
-
       printf "Automatic disk size...\n"
       printf "  Closure space use: %d bytes\n" $diskUsage
       printf "  fudge: %d bytes\n" $fudge
@@ -485,26 +498,35 @@ let format' = format; in let
       printf "  Additional space: %d bytes\n" $additionalSpace
       printf "  Disk image size: %d bytes\n" $diskSize
     '' else ''
-      truncate -s ${toString diskSize}M $diskImage
+      diskSize=${toString (diskSize * 1024 * 1024)}
     ''}
+    truncate -s "$diskSize" $diskImage
 
     ${partitionDiskScript}
 
     ${if partitionTableType != "none" then ''
       # Get start & length of the root partition in sectors to $START and $SECTORS.
       eval $(partx $diskImage -o START,SECTORS --nr ${rootPartition} --pairs)
-
-      mkfs.${fsType} -b ${blockSize} -F -L ${label} $diskImage -E offset=$(sectorsToBytes $START) $(sectorsToKilobytes $SECTORS)K
+      fsDevSize=$(sectorsToBytes $SECTORS)
     '' else ''
-      mkfs.${fsType} -b ${blockSize} -F -L ${label} $diskImage
+      START=0
+      SECTORS=$(( diskSize / 512 ))
+      fsDevSize=$diskSize
     ''}
+    truncate -s $fsDevSize $fsImage
+    mkfs.${fsType} -b ${blockSize} -F -L ${label} $fsImage $(( (fsDevSize - luksSize) / 1024 ))K
 
     echo "copying staging root to image..."
-    cptofs -p ${optionalString (partitionTableType != "none") "-P ${rootPartition}"} \
+    cptofs -p \
            -t ${fsType} \
-           -i $diskImage \
+           -i $fsImage \
            $root${optionalString onlyNixStore builtins.storeDir}/* / ||
       (echo >&2 "ERROR: cptofs failed. diskSize might be too small for closure."; exit 1)
+    ${optionalString luks ''
+      echo "" | ${pkgs.cryptsetup}/bin/cryptsetup reencrypt --uuid ${luksUUID} --label ${luksLabel} --encrypt --disable-locks --batch-mode --type=luks2 --reduce-device-size $luksSize $fsImage
+    ''}
+    dd bs=512 count=$SECTORS if=$fsImage seek=$START of=$diskImage conv=notrunc
+    rm $fsImage
   '';
 
   moveOrConvertImage = ''
@@ -525,7 +547,7 @@ let format' = format; in let
   buildImage = pkgs.vmTools.runInLinuxVM (
     pkgs.runCommand name {
       preVM = prepareImage + lib.optionalString touchEFIVars createEFIVars;
-      buildInputs = with pkgs; [ util-linux e2fsprogs dosfstools ];
+      buildInputs = with pkgs; [ util-linux e2fsprogs dosfstools ] ++ optional luks cryptsetup;
       postVM = moveOrConvertImage + postVM;
       QEMU_OPTS =
         concatStringsSep " " (lib.optional useEFIBoot "-drive if=pflash,format=raw,unit=0,readonly=on,file=${efiFirmware}"
@@ -538,6 +560,10 @@ let format' = format; in let
       export PATH=${binPath}:$PATH
 
       rootDisk=${if partitionTableType != "none" then "/dev/vda${rootPartition}" else "/dev/vda"}
+      ${optionalString luks ''
+        echo "" | cryptsetup open $rootDisk root
+        rootDisk=/dev/mapper/root
+      ''}
 
       # It is necessary to set root filesystem unique identifier in advance, otherwise
       # bootloader might get the wrong one and fail to boot.
@@ -610,6 +636,10 @@ let format' = format; in let
       ${optionalString (fsType == "ext4") ''
         tune2fs -T now ${optionalString deterministic "-U ${rootFSUID}"} -c 0 -i 0 $rootDisk
         ${optionalString deterministic "tune2fs -f -T 19700101 $rootDisk"}
+      ''}
+
+      ${optionalString luks ''
+        cryptsetup close root
       ''}
     ''
   );

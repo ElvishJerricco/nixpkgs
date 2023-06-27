@@ -259,6 +259,7 @@ let
     # TODO: If a user is interested into a more fine grained heuristic for `installBootLoader`
     # by examining the actual contents of `cfg.fileSystems`, please send a PR.
     installBootLoader = cfg.useBootLoader && cfg.useDefaultFilesystems;
+    luks = cfg.luks.enable;
     touchEFIVars = cfg.useEFIBoot;
     diskSize = "auto";
     additionalSpace = "0M";
@@ -381,6 +382,19 @@ in
             The path (inside the VM) to the device containing the root filesystem.
           '';
       };
+
+    virtualisation.luks.enable = mkEnableOption "luks";
+
+    virtualisation.luks.rootDevice = mkOption {
+      type = types.nullOr types.path;
+      default = "/dev/disk/by-label/luks-${rootFilesystemLabel}";
+      defaultText = literalExpression ''/dev/disk/by-label/luks-${rootFilesystemLabel}'';
+      example = "/dev/vda2";
+      description =
+        lib.mdDoc ''
+          The path (inside the VM) to the device containing the root LUKS volume.
+        '';
+    };
 
     virtualisation.emptyDiskImages =
       mkOption {
@@ -1227,7 +1241,12 @@ in
     };
 
     swapDevices = (if cfg.useDefaultFilesystems then mkVMOverride else mkDefault) [ ];
-    boot.initrd.luks.devices = (if cfg.useDefaultFilesystems then mkVMOverride else mkDefault) {};
+    boot.initrd.luks.devices = (if cfg.useDefaultFilesystems then mkVMOverride else mkDefault) {
+      root = mkIf cfg.luks.enable {
+        device = cfg.luks.rootDevice;
+        tryEmptyPassphrase = true;
+      };
+    };
 
     # Don't run ntpd in the guest.  It should get the correct time from KVM.
     services.timesyncd.enable = false;
