@@ -129,6 +129,9 @@ To solve this, you can run `fdisk -l $image` and generate `dd if=$image of=$imag
 , # Whether to invoke `switch-to-configuration boot` during image creation
   installBootLoader ? true
 
+, # Whether to setup GPT type codes for gpt-auto-generator
+  gptAuto ? false
+
 , # Whether to format with LUKS
   luks ? false
 
@@ -218,6 +221,7 @@ assert (lib.assertMsg (lib.all
               == ((attrs.group or null) == null))
         contents) "Contents of the disk image should set none of {user, group} or both at the same time.");
 assert ((luksSize == 0) != luks);
+assert (gptAuto -> partitionTableType == "efi");
 
 with lib;
 
@@ -240,6 +244,13 @@ let format' = format; in let
     efi = "2";
     hybrid = "3";
   }.${partitionTableType};
+
+  # https://uapi-group.org/specifications/specs/discoverable_partitions_specification/#defined-partition-type-uuids
+  rootFSTypeCode = {
+    "x64" = "4f68bce3-e8cd-4db1-96e7-fbcaf984b709";
+    "aa64" = "b921b045-1df0-41c3-af44-4c6f280d3fae";
+    "riscv64" = "72ec70a6-cf74-40e6-bd49-4bda08e8f224";
+  }.${pkgs.hostPlatform.efiArch} or (throw "Unknown GPT root FS type for ${pkgs.hostPlatform.efiArch}");
 
   partitionDiskScript = { # switch-case
     legacy = ''
@@ -271,6 +282,11 @@ let format' = format; in let
         mkpart ESP fat32 8MiB ${bootSize} \
         set 1 boot on \
         mkpart primary ext4 ${bootSize} -1
+      ${optionalString gptAuto ''
+          sgdisk \
+          --typecode=2:${rootFSTypeCode} \
+          $diskImage
+      ''}
       ${optionalString deterministic ''
           sgdisk \
           --disk-guid=97FD5997-D90B-4AA3-8D16-C1723AEA73C \
@@ -326,7 +342,7 @@ let format' = format; in let
       nix
       systemdMinimal
     ]
-    ++ lib.optional deterministic gptfdisk
+    ++ lib.optional (deterministic || gptAuto) gptfdisk
     ++ stdenv.initialPath);
 
   # I'm preserving the line below because I'm going to search for it across nixpkgs to consolidate

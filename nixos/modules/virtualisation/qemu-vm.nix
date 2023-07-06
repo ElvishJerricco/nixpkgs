@@ -259,6 +259,7 @@ let
     # TODO: If a user is interested into a more fine grained heuristic for `installBootLoader`
     # by examining the actual contents of `cfg.fileSystems`, please send a PR.
     installBootLoader = cfg.useBootLoader && cfg.useDefaultFilesystems;
+    gptAuto = cfg.gptAuto.enable;
     luks = cfg.luks.enable;
     touchEFIVars = cfg.useEFIBoot;
     diskSize = "auto";
@@ -373,7 +374,7 @@ in
 
     virtualisation.rootDevice =
       mkOption {
-        type = types.nullOr types.path;
+        type = types.either (types.enum ["gpt-auto"]) (types.nullOr types.path);
         default = "/dev/disk/by-label/${rootFilesystemLabel}";
         defaultText = literalExpression ''/dev/disk/by-label/${rootFilesystemLabel}'';
         example = "/dev/disk/by-label/nixos";
@@ -395,6 +396,8 @@ in
           The path (inside the VM) to the device containing the root LUKS volume.
         '';
     };
+
+    virtualisation.gptAuto.enable = mkEnableOption "gpt-auto-generator for file systems";
 
     virtualisation.emptyDiskImages =
       mkOption {
@@ -989,6 +992,12 @@ in
                 If you have a more advanced usecase, please open an issue or a pull request.
               '';
           }
+          {
+            assertion = cfg.gptAuto.enable -> cfg.useBootLoader && cfg.useEFIBoot && config.boot.initrd.systemd.enable;
+            message = ''
+              gptAuto requires a fully systemd-based boot chain, including EFI, systemd-boot, and initrd.
+            '';
+          }
         ];
 
     warnings =
@@ -1022,6 +1031,7 @@ in
     # FIXME: make a sense of this mess wrt to multiple ESP present in the system, probably use boot.efiSysMountpoint?
     boot.loader.grub.device = mkVMOverride (if cfg.useEFIBoot then "nodev" else cfg.bootLoaderDevice);
     boot.loader.grub.gfxmodeBios = with cfg.resolution; "${toString x}x${toString y}";
+    virtualisation.rootDevice = mkIf cfg.gptAuto.enable "gpt-auto";
 
     boot.initrd.kernelModules = optionals (cfg.useNixStoreImage && !cfg.writableStore) [ "erofs" ];
 
@@ -1068,7 +1078,8 @@ in
     boot.initrd.availableKernelModules =
       optional cfg.writableStore "overlay"
       ++ optional (cfg.qemu.diskInterface == "scsi") "sym53c8xx"
-      ++ optional (cfg.tpm.enable) "tpm_tis";
+      ++ optional (cfg.tpm.enable) "tpm_tis"
+      ++ optional cfg.gptAuto.enable "efivarfs";
 
     virtualisation.additionalPaths = [ config.system.build.toplevel ];
 
@@ -1208,7 +1219,7 @@ in
           options = [ "mode=0755" ];
           neededForBoot = true;
         };
-        "/boot" = lib.mkIf (cfg.useBootLoader && cfg.bootPartition != null) {
+        "/boot" = lib.mkIf (cfg.useBootLoader && cfg.bootPartition != null && !cfg.gptAuto.enable) {
           device = cfg.bootPartition;
           fsType = "vfat";
           noCheck = true; # fsck fails on a r/o filesystem
@@ -1242,7 +1253,7 @@ in
 
     swapDevices = (if cfg.useDefaultFilesystems then mkVMOverride else mkDefault) [ ];
     boot.initrd.luks.devices = (if cfg.useDefaultFilesystems then mkVMOverride else mkDefault) {
-      root = mkIf cfg.luks.enable {
+      root = mkIf (cfg.luks.enable && !cfg.gptAuto.enable) {
         device = cfg.luks.rootDevice;
         tryEmptyPassphrase = true;
       };
