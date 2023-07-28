@@ -28773,6 +28773,7 @@ with pkgs;
     withTpm2Tss = false;
     withUserDb = false;
     withUkify = false;
+    withBootloader = false;
   };
   systemdStage1 = systemdMinimal.override {
     pname = "systemd-stage-1";
