@@ -123,6 +123,7 @@
 , withRemote ? !stdenv.hostPlatform.isMusl
 , withResolved ? true
 , withShellCompletions ? true
+, withSysupdate ? true
 , withTimedated ? true
 , withTimesyncd ? true
 , withTpm2Tss ? true
@@ -493,6 +494,7 @@ stdenv.mkDerivation (finalAttrs: {
     "-Dlibidn=false"
     "-Dlibidn2=${lib.boolToString withLibidn2}"
     "-Drepart=${lib.boolToString withRepart}"
+    "-Dsysupdate=${lib.boolToString withSysupdate}"
     "-Dquotacheck=false"
     "-Dldconfig=false"
     "-Dsmack=true"

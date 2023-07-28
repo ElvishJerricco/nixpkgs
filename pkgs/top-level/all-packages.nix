@@ -28458,6 +28458,7 @@ with pkgs;
     withRemote = false;
     withResolved = false;
     withShellCompletions = false;
+    withSysupdate = false;
     withTimedated = false;
     withTimesyncd = false;
     withTpm2Tss = false;
