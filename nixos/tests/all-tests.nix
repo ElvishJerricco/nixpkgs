@@ -565,6 +565,7 @@ in {
   input-remapper = handleTest ./input-remapper.nix {};
   inspircd = handleTest ./inspircd.nix {};
   installer = handleTest ./installer.nix {};
+  installer-small = import ./installer-small { inherit runTest; };
   installer-systemd-stage-1 = handleTest ./installer-systemd-stage-1.nix {};
   intune = handleTest ./intune.nix {};
   invoiceplane = handleTest ./invoiceplane.nix {};
