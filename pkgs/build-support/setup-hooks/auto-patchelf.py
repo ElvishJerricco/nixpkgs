@@ -39,7 +39,7 @@ def is_dynamic_executable(elf: ELFFile) -> bool:
     return bool(elf.get_section_by_name(".interp"))
 
 
-def get_dependencies(elf: ELFFile) -> List[str]:
+def get_dependencies(elf: ELFFile) -> List[List[str]]:
     dependencies = []
     # This convoluted code is here on purpose. For some reason, using
     # elf.get_section_by_name(".dynamic") does not always return an
@@ -47,13 +47,13 @@ def get_dependencies(elf: ELFFile) -> List[str]:
     for section in elf.iter_sections():
         if isinstance(section, DynamicSection):
             for tag in section.iter_tags("DT_NEEDED"):
-                dependencies.append(tag.needed)
+                dependencies.append([ tag.needed ])
             break  # There is only one dynamic section
 
     return dependencies
 
 
-def get_dlopen_dependencies(elf: ELFFile) -> List[str]:
+def get_dlopen_dependencies(elf: ELFFile) -> List[List[str]]:
     """
     Extracts dependencies from the .note.dlopen section, which is used by
     systemd to store the list of libraries that are opened with dlopen.
@@ -70,8 +70,7 @@ def get_dlopen_dependencies(elf: ELFFile) -> List[str]:
             text = note_desc.decode("utf-8").rstrip("\0")
             j = json.loads(text)
             for d in j:
-                for soname in d["soname"]:
-                    dependencies.append(soname)
+                dependencies.append(d["soname"])
     return dependencies
 
 
@@ -237,7 +236,9 @@ def auto_patchelf_file(
 
             file_is_dynamic_executable = is_dynamic_executable(elf)
 
-            file_dependencies = map(Path, get_dependencies(elf) + get_dlopen_dependencies(elf))
+            # Each dependency is represented as a list of permissible sonames.
+            # .note.dlopen allows for one of several candidate sonames.
+            file_dependencies = [[Path(soname) for soname in dep] for dep in get_dependencies(elf) + get_dlopen_dependencies(elf)]
 
     except ELFError:
         return []
@@ -263,20 +264,25 @@ def auto_patchelf_file(
     # failing at the first one, because it's more useful when working
     # on a new package where you don't yet know the dependencies.
     for dep in file_dependencies:
-        if dep.is_absolute() and dep.is_file():
-            # This is an absolute path. If it exists, just use it.
-            # Otherwise, we probably want this to produce an error when
-            # checked (because just updating the rpath won't satisfy
-            # it).
-            continue
+        found_dependency = None
+        for candidate in dep:
+            if candidate.is_absolute() and candidate.is_file():
+                # This is an absolute path. If it exists, just use it.
+                # Otherwise, we probably want this to produce an error when
+                # checked (because just updating the rpath won't satisfy
+                # it).
+                continue
 
-        if found_dependency := find_dependency(dep.name, file_arch, file_osabi):
-            rpath.append(found_dependency)
-            dependencies.append(Dependency(path, dep, True))
-            print(f"    {dep} -> found: {found_dependency}")
-        else:
-            dependencies.append(Dependency(path, dep, False))
-            print(f"    {dep} -> not found!")
+            if found_dependency := find_dependency(candidate.name, file_arch, file_osabi):
+                rpath.append(found_dependency)
+                dependencies.append(Dependency(path, candidate, True))
+                print(f"    {candidate} -> found: {found_dependency}")
+                break
+
+        if found_dependency == None:
+            dep_name = dep[0] if len(dep) == 1 else "any(%s)" % ", ".join([str(soname) for soname in dep])
+            dependencies.append(Dependency(path, dep_name, False))
+            print(f"    {dep_name} -> not found!")
 
     rpath.extend(append_rpaths)
 
