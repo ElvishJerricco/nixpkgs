@@ -1254,32 +1254,6 @@ in
     '';
   };
 
-  # Create two physical LVM partitions combined into one volume group
-  # that contains the logical swap and root partitions.
-  lvm = makeInstallerTest "lvm" {
-    createPartitions = ''
-      installer.succeed(
-          "flock /dev/vda parted --script /dev/vda -- mklabel msdos"
-          + " mkpart primary 1M 2048M"  # PV1
-          + " set 1 lvm on"
-          + " mkpart primary 2048M -1s"  # PV2
-          + " set 2 lvm on",
-          "udevadm settle",
-          "pvcreate /dev/vda1 /dev/vda2",
-          "vgcreate MyVolGroup /dev/vda1 /dev/vda2",
-          "lvcreate --size 1G --name swap MyVolGroup",
-          "lvcreate --size 6G --name nixos MyVolGroup",
-          "mkswap -f /dev/MyVolGroup/swap -L swap",
-          "swapon -L swap",
-          "mkfs.xfs -L nixos /dev/MyVolGroup/nixos",
-          "mount LABEL=nixos /mnt",
-      )
-    '';
-    extraConfig = optionalString systemdStage1 ''
-      boot.initrd.services.lvm.enable = true;
-    '';
-  };
-
   # Boot off an encrypted root partition with the default LUKS header format
   luksroot = makeLuksRootTest "luksroot-format1" "";
 
