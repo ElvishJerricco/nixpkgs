@@ -65,7 +65,7 @@ in {
     systemd.services.unlock-bcachefs-data = {
       enable = false;
     };
-    virtualisation.emptyDiskImages = [ 512 2048 2048 ];
+    virtualisation.emptyDiskImages = [ 512 2048 ];
     virtualisation.fileSystems = lib.mkForce {
       "/" = {
         device = "PARTUUID=3f4bb431-10b5-4657-a7dd-9db61295c20d";
@@ -80,8 +80,8 @@ in {
         device = "UUID=5473eba9-27a5-44a6-ad26-e37f852b0614";
         fsType = "bcachefs";
         options = [
-          "x-systemd.requires=dev-disk-by\\x2dpartuuid-d1cbac0f\\x2d9a3c\\x2d4796\\x2d809c\\x2d9324e7dc5e54.device"
-          "x-systemd.requires=dev-disk-by\\x2dpartuuid-f906135e\\x2da307\\x2d41f7\\x2da8e7\\x2d502127489968.device"
+          "x-systemd.wants=dev-disk-by\\x2dpartuuid-d1cbac0f\\x2d9a3c\\x2d4796\\x2d809c\\x2d9324e7dc5e54.device"
+          "x-systemd.wants=dev-disk-by\\x2dpartuuid-f906135e\\x2da307\\x2d41f7\\x2da8e7\\x2d502127489968.device"
           "defaults"
         ];
       };
