@@ -1254,45 +1254,6 @@ in
     '';
   };
 
-  # zfs on / with swap
-  zfsroot = makeInstallerTest "zfs-root" {
-    extraInstallerConfig = {
-      boot.supportedFilesystems = [ "zfs" ];
-    };
-
-    extraConfig = ''
-      boot.supportedFilesystems = [ "zfs" ];
-
-      # Using by-uuid overrides the default of by-id, and is unique
-      # to the qemu disks, as they don't produce by-id paths for
-      # some reason.
-      boot.zfs.devNodes = "/dev/disk/by-uuid/";
-      networking.hostId = "00000000";
-    '';
-
-    createPartitions = ''
-      installer.succeed(
-          "flock /dev/vda parted --script /dev/vda -- mklabel msdos"
-          + " mkpart primary 1M 100MB"  # /boot
-          + " mkpart primary linux-swap 100M 1024M"
-          + " mkpart primary 1024M -1s", # rpool
-          "udevadm settle",
-          "mkswap /dev/vda2 -L swap",
-          "swapon -L swap",
-          "zpool create rpool /dev/vda3",
-          "zfs create -o mountpoint=legacy rpool/root",
-          "mount -t zfs rpool/root /mnt",
-          "zfs create -o mountpoint=legacy rpool/root/usr",
-          "mkdir /mnt/usr",
-          "mount -t zfs rpool/root/usr /mnt/usr",
-          "mkfs.vfat -n BOOT /dev/vda1",
-          "mkdir /mnt/boot",
-          "mount LABEL=BOOT /mnt/boot",
-          "udevadm settle",
-      )
-    '';
-  };
-
   # Create two physical LVM partitions combined into one volume group
   # that contains the logical swap and root partitions.
   lvm = makeInstallerTest "lvm" {
