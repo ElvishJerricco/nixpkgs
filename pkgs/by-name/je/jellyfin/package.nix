@@ -9,17 +9,23 @@
   freetype,
   jellyfin-web,
   sqlite,
+  fetchpatch,
 }:
 
 buildDotnetModule rec {
   pname = "jellyfin";
-  version = "10.9.7"; # ensure that jellyfin-web has matching version
+  version = "10.9.9"; # ensure that jellyfin-web has matching version
 
   src = fetchFromGitHub {
     owner = "jellyfin";
     repo = "jellyfin";
     rev = "v${version}";
-    sha256 = "sha256-jxOFbmYrgxP6jbjnWubajqXInLXu7TO4vssU4E1oeoc=";
+    sha256 = "sha256-kck4VQiH+uZvASO1YxKze2pu8N+z5rqYJAXFVPc+ZJU=";
+  };
+
+  patches = fetchpatch {
+    url = "https://github.com/jellyfin/jellyfin/commit/21f1813d82ca00eba9d2670889deeaab91c2f77e.patch?full_index=1";
+    hash = "sha256-pawiYiPj+PmpvMyTRAVgGa4rrPaMBT2e9cbjnlHK0Zg=";
   };
 
   propagatedBuildInputs = [ sqlite ];
