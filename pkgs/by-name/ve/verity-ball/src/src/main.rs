@@ -57,5 +57,6 @@ fn main() -> Result<()> {
             _ => output.append_data(&mut header, path, file)?,
         }
     }
+    output.finish()?;
     Ok(())
 }
