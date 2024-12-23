@@ -344,6 +344,8 @@ let
     additionalSpace = "0M";
     copyChannel = false;
     OVMF = cfg.efi.OVMF;
+    verity = config.system.verity.enable;
+    kernel = config.boot.kernelPackages.kernel;
   };
 in
 {

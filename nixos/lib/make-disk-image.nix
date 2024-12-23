@@ -182,6 +182,10 @@ To solve this, you can run `fdisk -l $image` and generate `dd if=$image of=$imag
   # TODO: support other filesystems someday.
 , rootFSUID ? (if fsType == "ext4" then rootGPUID else null)
 
+, verity ? false
+
+, kernel ? pkgs.linux
+
 , # Whether a nix channel based on the current source tree should be
   # made available inside the image. Useful for interactive use of nix
   # utils, but changes the hash of the image when the sources are
@@ -509,9 +513,9 @@ let format' = format; in let
       # Get start & length of the root partition in sectors to $START and $SECTORS.
       eval $(partx $diskImage -o START,SECTORS --nr ${rootPartition} --pairs)
 
-      mkfs.${fsType} -b ${blockSize} -F -L ${label} $diskImage -E offset=$(sectorsToBytes $START) $(sectorsToKilobytes $SECTORS)K
+      mkfs.${fsType} ${lib.optionalString verity "-O verity"} -b ${blockSize} -F -L ${label} $diskImage -E offset=$(sectorsToBytes $START) $(sectorsToKilobytes $SECTORS)K
     '' else ''
-      mkfs.${fsType} -b ${blockSize} -F -L ${label} $diskImage
+      mkfs.${fsType} ${lib.optionalString verity "-O verity"} -b ${blockSize} -F -L ${label} $diskImage
     ''}
 
     echo "copying staging root to image..."
@@ -542,7 +546,7 @@ let format' = format; in let
     echo "file ${format}-image $out/${filename}" >> $out/nix-support/hydra-build-products
   '';
 
-  buildImage = pkgs.vmTools.runInLinuxVM (
+  buildImage = (pkgs.vmTools.override { inherit kernel; }).runInLinuxVM (
     pkgs.runCommand name {
       preVM = prepareImage + lib.optionalString touchEFIVars createEFIVars;
       buildInputs = with pkgs; [ util-linux e2fsprogs dosfstools ];

@@ -354,7 +354,7 @@ in
       # option, as opposed to `system.extraDependencies`.
       passedChecks = concatStringsSep " " config.system.checks;
     }
-    // lib.optionalAttrs (config.system.forbiddenDependenciesRegexes != []) {
+    // lib.optionalAttrs (config.system.forbiddenDependenciesRegexes != [] || config.system.verity.enable) {
       closureInfo = pkgs.closureInfo { rootPaths = [
         # override to avoid  infinite recursion (and to allow using extraDependencies to add forbidden dependencies)
         (config.system.build.toplevel.overrideAttrs (_: { extraDependencies = []; closureInfo = null; }))

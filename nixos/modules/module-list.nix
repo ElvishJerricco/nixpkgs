@@ -1762,6 +1762,7 @@
   ./tasks/swraid.nix
   ./tasks/trackpoint.nix
   ./testing/service-runner.nix
+  ./system/boot/verity.nix
   ./virtualisation/amazon-options.nix
   ./virtualisation/appvm.nix
   ./virtualisation/build-vm.nix
