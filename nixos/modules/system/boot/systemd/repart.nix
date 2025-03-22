@@ -176,6 +176,7 @@ in
           # is available.
           requires = lib.mkIf (initrdCfg.device != null) [ deviceUnit ];
           after = if initrdCfg.device == null then [ "sysroot.mount" ] else [ deviceUnit ];
+          before = [ "systemd-fsck@${utils.escapeSystemdPath initrdCfg.device}.service" ];
         };
     };
 

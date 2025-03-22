@@ -12,6 +12,8 @@
     # both installer and target need to use the same drive
     virtualisation.diskImage = "./target.qcow2";
 
+    environment.systemPackages = [ pkgs.jq ];
+
     nix.settings = {
       substituters = lib.mkForce [];
       hashed-mirrors = null;
@@ -60,18 +62,31 @@ in {
     hardware.enableAllFirmware = lib.mkForce false;
   };
 
-  testScript = ''
+  testScript = { nodes, ... }: ''
     installer.start()
     installer.wait_for_unit("installed.target")
 
+    # A bunch of crap is dumped here just for the repart-tmpfs test
+    # because I never added a way for each test to customize the testScript
+
     with subtest("Shutdown system after installation"):
+        start_size = int(installer.succeed("findmnt --json --target /mnt/nix | jq -r .filesystems[].source | xargs lsblk -b --json | jq .blockdevices[].size"))
         installer.succeed("umount -R /mnt")
         installer.succeed("sync")
         installer.shutdown()
 
     target.state_dir = installer.state_dir
+    import subprocess
+    subprocess.run([
+      "${nodes.target.virtualisation.qemu.package}/bin/qemu-img",
+      "resize",
+      target.state_dir / "target.qcow2",
+      "+2G",
+    ])
     with subtest("Boot new machine"):
         target.wait_for_unit("multi-user.target")
+        new_size = int(target.succeed("findmnt --json --target /nix | jq -r .filesystems[].source | xargs lsblk -b --json | jq .blockdevices[].size"))
+        assert new_size > start_size, "Partition didn't grow"
 
 
     target.shutdown()
