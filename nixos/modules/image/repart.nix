@@ -280,6 +280,16 @@ in
       '';
     };
 
+    extraBuildCommands = lib.mkOption {
+      type = lib.types.lines;
+      default = "";
+      internal = true;
+      visible = true;
+      description = ''
+        Extra commands to run after the image is built.
+      '';
+    };
+
   };
 
   config = {
@@ -400,6 +410,7 @@ in
             seed
             sectorSize
             finalPartitions
+            extraBuildCommands
             ;
           inherit fileSystems definitionsDirectory mkfsEnv;
         };

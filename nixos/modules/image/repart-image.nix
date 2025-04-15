@@ -40,6 +40,7 @@
   sectorSize,
   mkfsEnv ? { },
   createEmpty ? true,
+  extraBuildCommands,
 }:
 
 let
@@ -210,6 +211,8 @@ stdenvNoCC.mkDerivation (
 
       runHook postBuild
     '';
+
+    postBuild = extraBuildCommands;
 
     installPhase = ''
       runHook preInstall
