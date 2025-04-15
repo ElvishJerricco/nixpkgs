@@ -31,6 +31,7 @@ GRACEFUL = "@graceful@"
 COPY_EXTRA_FILES = "@copyExtraFiles@"
 CHECK_MOUNTPOINTS = "@checkMountpoints@"
 STORE_DIR = "@storeDir@"
+ENABLE_RANDOM_SEED = bool("@enableRandomSeed@")
 
 @dataclass
 class BootSpec:
@@ -295,6 +296,12 @@ def install_bootloader(args: argparse.Namespace) -> None:
 
     if GRACEFUL == "1":
         bootctl_flags.append("--graceful")
+
+    if ENABLE_RANDOM_SEED == "1":
+        bootctl_flags.append("--random-seed=yes")
+    else:
+        bootctl_flags.append("--random-seed=no")
+
 
     if os.getenv("NIXOS_INSTALL_BOOTLOADER") == "1":
         # bootctl uses fopen() with modes "wxe" and fails if the file exists.

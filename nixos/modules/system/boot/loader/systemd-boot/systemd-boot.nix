@@ -55,7 +55,10 @@ let
 
       configurationLimit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
 
-      inherit (cfg) graceful;
+      inherit (cfg)
+        graceful
+        enableRandomSeed
+        ;
 
       inherit (efi) efiSysMountPoint canTouchEfiVariables;
 
@@ -418,6 +421,11 @@ in
         Only enable this option if `systemd-boot` otherwise fails to install, as the
         scope or implication of the `--graceful` option may change in the future.
       '';
+    };
+
+    enableRandomSeed = mkEnableOption "creating / updating the random seed" // {
+      default = true;
+      example = false;
     };
 
     settings = mkOption {
