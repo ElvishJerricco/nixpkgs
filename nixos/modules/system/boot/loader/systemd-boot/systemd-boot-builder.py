@@ -18,22 +18,20 @@ from dataclasses import dataclass
 # These values will be replaced with actual values during the package build
 EFI_SYS_MOUNT_POINT = "@efiSysMountPoint@"
 BOOT_MOUNT_POINT = "@bootMountPoint@"
+INPUT_LOADER_CONF = "@loaderConf@"
 LOADER_CONF = f"{EFI_SYS_MOUNT_POINT}/loader/loader.conf"  # Always stored on the ESP
 NIXOS_DIR = "@nixosDir@"
-TIMEOUT = "@timeout@"
-EDITOR = "@editor@" == "1" # noqa: PLR0133
-CONSOLE_MODE = "@consoleMode@"
 BOOTSPEC_TOOLS = "@bootspecTools@"
 DISTRO_NAME = "@distroName@"
 NIX = "@nix@"
 SYSTEMD = "@systemd@"
 CONFIGURATION_LIMIT = int("@configurationLimit@")
-REBOOT_FOR_BITLOCKER = bool("@rebootForBitlocker@")
 CAN_TOUCH_EFI_VARIABLES = "@canTouchEfiVariables@"
 GRACEFUL = "@graceful@"
 COPY_EXTRA_FILES = "@copyExtraFiles@"
 CHECK_MOUNTPOINTS = "@checkMountpoints@"
 STORE_DIR = "@storeDir@"
+ENABLE_RANDOM_SEED = bool("@enableRandomSeed@")
 
 @dataclass
 class BootSpec:
@@ -101,14 +99,9 @@ def generation_conf_filename(profile: str | None, generation: int, specialisatio
 
 
 def write_loader_conf(profile: str | None, generation: int, specialisation: str | None) -> None:
-    with open(f"{LOADER_CONF}.tmp", 'w') as f:
-        f.write(f"timeout {TIMEOUT}\n")
+    with open(f"{LOADER_CONF}.tmp", 'w') as f, open(INPUT_LOADER_CONF, 'r') as input_f:
+        shutil.copyfileobj(input_f, f)
         f.write("default %s\n" % generation_conf_filename(profile, generation, specialisation))
-        if not EDITOR:
-            f.write("editor 0\n")
-        if REBOOT_FOR_BITLOCKER:
-            f.write("reboot-for-bitlocker yes\n")
-        f.write(f"console-mode {CONSOLE_MODE}\n")
         f.flush()
         os.fsync(f.fileno())
     os.rename(f"{LOADER_CONF}.tmp", LOADER_CONF)
@@ -303,6 +296,12 @@ def install_bootloader(args: argparse.Namespace) -> None:
 
     if GRACEFUL == "1":
         bootctl_flags.append("--graceful")
+
+    if ENABLE_RANDOM_SEED == "1":
+        bootctl_flags.append("--random-seed=yes")
+    else:
+        bootctl_flags.append("--random-seed=no")
+
 
     if os.getenv("NIXOS_INSTALL_BOOTLOADER") == "1":
         # bootctl uses fopen() with modes "wxe" and fails if the file exists.

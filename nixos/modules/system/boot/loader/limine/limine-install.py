@@ -243,6 +243,8 @@ def install_bootloader() -> None:
         limine_install_dir = os.path.join(str(config('efiMountPoint')), 'limine')
     elif boot_fs and is_fs_type_supported(boot_fs['fsType']) and not is_encrypted(boot_fs['device']):
         limine_install_dir = '/boot/limine'
+    elif config('bootDirectory') is not None:
+        limine_install_dir = os.path.join(config('bootDirectory'), 'limine')
     else:
         possible_causes = []
         if not boot_fs:

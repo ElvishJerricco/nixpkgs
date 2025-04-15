@@ -12,6 +12,8 @@ let
 
   efi = config.boot.loader.efi;
 
+  format = pkgs.formats.systemdLoaderConf;
+
   # We check the source code in a derivation that does not depend on the
   # system configuration so that most users don't have to redo the check and require
   # the necessary dependencies.
@@ -51,18 +53,16 @@ let
 
       nix = config.nix.package.out;
 
-      timeout = if config.boot.loader.timeout == null then "menu-force" else config.boot.loader.timeout;
-
       configurationLimit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
 
       inherit (cfg)
-        consoleMode
         graceful
-        editor
-        rebootForBitlocker
+        enableRandomSeed
         ;
 
       inherit (efi) efiSysMountPoint canTouchEfiVariables;
+
+      loaderConf = format.generate cfg.settings;
 
       bootMountPoint =
         if cfg.xbootldrMountPoint != null then cfg.xbootldrMountPoint else efi.efiSysMountPoint;
@@ -161,6 +161,51 @@ in
       ]
       (config: lib.strings.removeSuffix ".conf" config.boot.loader.systemd-boot.netbootxyz.entryFilename)
     )
+    (mkRenamedOptionModule
+      [
+        "boot"
+        "loader"
+        "systemd-boot"
+        "editor"
+      ]
+      [
+        "boot"
+        "loader"
+        "systemd-boot"
+        "settings"
+        "editor"
+      ]
+    )
+    (mkRenamedOptionModule
+      [
+        "boot"
+        "loader"
+        "systemd-boot"
+        "consoleMode"
+      ]
+      [
+        "boot"
+        "loader"
+        "systemd-boot"
+        "settings"
+        "console-mode"
+      ]
+    )
+    (mkRenamedOptionModule
+      [
+        "boot"
+        "loader"
+        "systemd-boot"
+        "rebootForBitlocker"
+      ]
+      [
+        "boot"
+        "loader"
+        "systemd-boot"
+        "settings"
+        "reboot-for-bitlocker"
+      ]
+    )
   ];
 
   options.boot.loader.systemd-boot = {
@@ -202,20 +247,6 @@ in
         generation was removed from the NixOS configuration.
         It also means that updating the sort-key will only affect new generations,
         while old ones will keep the sort-key that they were originally built with.
-      '';
-    };
-
-    editor = mkOption {
-      default = true;
-
-      type = types.bool;
-
-      description = ''
-        Whether to allow editing the kernel command-line before
-        boot. It is recommended to set this to false, as it allows
-        gaining root access by passing init=/bin/sh as a kernel
-        parameter. However, it is enabled by default for backwards
-        compatibility.
       '';
     };
 
@@ -266,32 +297,6 @@ in
         script after generating menu entries. It can be used to expand
         on extra boot entries that cannot incorporate certain pieces of
         information (such as the resulting `init=` kernel parameter).
-      '';
-    };
-
-    consoleMode = mkOption {
-      default = "keep";
-
-      type = types.enum [
-        "0"
-        "1"
-        "2"
-        "5"
-        "auto"
-        "max"
-        "keep"
-      ];
-
-      description = ''
-        The resolution of the console. The following values are valid:
-
-        - `"0"`: Standard UEFI 80x25 mode
-        - `"1"`: 80x50 mode, not supported by all devices
-        - `"2"`: The first non-standard mode provided by the device firmware, if any
-        - `"5"`: Applicable for SteamDeck where this mode represent horizontal mode
-        - `"auto"`: Pick a suitable mode automatically using heuristics
-        - `"max"`: Pick the highest-numbered available mode
-        - `"keep"`: Keep the mode selected by firmware (the default)
       '';
     };
 
@@ -418,21 +423,68 @@ in
       '';
     };
 
-    rebootForBitlocker = mkOption {
-      default = false;
+    enableRandomSeed = mkEnableOption "creating / updating the random seed" // {
+      default = true;
+      example = false;
+    };
 
-      type = types.bool;
-
+    settings = mkOption {
+      default = { };
+      example = {
+        auto-windows = false;
+      };
       description = ''
-        Enable *EXPERIMENTAL* BitLocker support.
-
-        Try to detect BitLocker encrypted drives along with an active
-        TPM. If both are found and Windows Boot Manager is selected in
-        the boot menu, set the "BootNext" EFI variable and restart the
-        system. The firmware will then start Windows Boot Manager
-        directly, leaving the TPM PCRs in expected states so that
-        Windows can unseal the encryption key.
+        Settings to be written to `''${efiSysMountPoint}/loader/loader.conf`.
+        See {manpage}`loader.conf(5)`
       '';
+      type = lib.types.submodule {
+        freeformType = format.type;
+        options = {
+          editor = lib.mkOption {
+            type = types.nullOr types.bool;
+            default = null;
+            description = ''
+              Whether to allow editing the kernel command-line before
+              boot. It is recommended to set this to false, as it
+              allows gaining root access by passing init=/bin/sh as a
+              kernel parameter. However, for backwards compatibility,
+              it is set to `null` by default, which causes
+              systemd-boot to use its default of `true`.
+            '';
+          };
+
+          reboot-for-bitlocker = mkOption {
+            type = types.nullOr types.bool;
+            default = null;
+            description = ''
+              Enable *EXPERIMENTAL* BitLocker support.
+
+              Try to detect BitLocker encrypted drives along with an active
+              TPM. If both are found and Windows Boot Manager is selected in
+              the boot menu, set the "BootNext" EFI variable and restart the
+              system. The firmware will then start Windows Boot Manager
+              directly, leaving the TPM PCRs in expected states so that
+              Windows can unseal the encryption key.
+            '';
+          };
+
+          console-mode = mkOption {
+            type = types.nullOr types.bool;
+            default = null;
+            description = ''
+              The resolution of the console. The following values are valid:
+
+              - `"0"`: Standard UEFI 80x25 mode
+              - `"1"`: 80x50 mode, not supported by all devices
+              - `"2"`: The first non-standard mode provided by the device firmware, if any
+              - `"5"`: Applicable for SteamDeck where this mode represent horizontal mode
+              - `"auto"`: Pick a suitable mode automatically using heuristics
+              - `"max"`: Pick the highest-numbered available mode
+              - `"keep"`: Keep the mode selected by firmware (the default)
+            '';
+          };
+        };
+      };
     };
 
     windows = mkOption {
@@ -623,6 +675,8 @@ in
         '';
       }) cfg.windows)
     );
+
+    boot.loader.systemd-boot.settings.timeout = config.boot.loader.timeout;
 
     boot.bootspec.extensions."org.nixos.systemd-boot" = {
       inherit (config.boot.loader.systemd-boot) sortKey;

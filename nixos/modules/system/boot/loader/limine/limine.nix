@@ -34,6 +34,7 @@ let
       additionalFiles = cfg.additionalFiles;
       validateChecksums = cfg.validateChecksums;
       panicOnChecksumMismatch = cfg.panicOnChecksumMismatch;
+      bootDirectory = cfg.bootDirectory;
     }
   );
   defaultWallpaper = pkgs.nixos-artwork.wallpapers.simple-dark-gray-bootloader.gnomeFilePath;
@@ -150,6 +151,14 @@ in
       description = ''
         Device to install the BIOS version of limine on.
       '';
+    };
+
+    bootDirectory = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      internal = true;
+      visible = false;
+      description = '''';
     };
 
     partitionIndex = lib.mkOption {
