@@ -423,6 +423,23 @@ optionalAttrs allowAliases aliases
       inherit mkKeyValue;
     };
 
+  systemdLoaderConf = {
+    type = lib.types.attrsOf systemd.lib.types.atom;
+    generate =
+      value:
+      pkgs.callPackage (
+        { writeText }:
+        writeText "loader.conf" (
+          lib.concatStringsSep "\n" (
+            lib.mapAttrsToList (lib.generators.mkKeyValueDefault { } " ") (
+              lib.filterAttrs (_: v: v != null) value
+            )
+          )
+          + "\n"
+        )
+      ) { };
+  };
+
   keyValue =
     {
       # Represents lists as duplicate keys
