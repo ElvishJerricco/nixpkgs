@@ -262,7 +262,9 @@ in
           been checked until NixOS 22.05. Earlier versions defaulted to the last
           definition. Change your configuration to enable only one bootloader.
         '';
-      } (types.either types.str types.package);
+      } (types.functionTo (types.either types.str types.package));
+      # (let base = [ types.str types.package ]; in types.oneOf (base ++ types.functionTo (types.oneOf base)))
+      apply = f: if lib.isFunction f then f else _: f;
     };
 
   };

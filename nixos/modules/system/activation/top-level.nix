@@ -362,7 +362,7 @@ in
 
       # Legacy environment variables. These were used by the activation script,
       # but some other script might still depend on them, although unlikely.
-      installBootLoader = config.system.build.installBootLoader;
+      installBootLoader = config.system.build.installBootLoader pkgs;
       localeArchive = "${config.i18n.glibcLocales}/lib/locale/locale-archive";
       distroId = config.system.nixos.distroId;
       perl = pkgs.perl.withPackages (

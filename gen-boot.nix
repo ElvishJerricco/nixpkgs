@@ -45,7 +45,7 @@ let
           ln -s "${config.system.build.toplevel}" ./chroot/nix/var/nix/profiles/system-1-link
           ln -s system-1-link ./chroot/nix/var/nix/profiles/system
           chroot ./chroot ${limineInstaller} "${config.system.build.toplevel}"
-          exec chroot ./chroot ${sdBootInstaller} "${config.system.build.toplevel}"
+          exec chroot ./chroot ${sdBootInstaller pkgs} "${config.system.build.toplevel}"
         '';
       };
     in
@@ -107,7 +107,7 @@ in
     "console=tty0"
   ];
 
-  system.build.installBootLoader = lib.mkForce "";
+  system.build.installBootLoader = lib.mkForce (_: "");
 
   image.repart = {
     name = "gen-boot";

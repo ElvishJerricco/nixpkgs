@@ -25,6 +25,7 @@ BOOTSPEC_TOOLS = "@bootspecTools@"
 DISTRO_NAME = "@distroName@"
 NIX = "@nix@"
 SYSTEMD = "@systemd@"
+BOOTCTL = "@bootctl@"
 CONFIGURATION_LIMIT = int("@configurationLimit@")
 CAN_TOUCH_EFI_VARIABLES = "@canTouchEfiVariables@"
 GRACEFUL = "@graceful@"
@@ -286,7 +287,7 @@ def install_bootloader(args: argparse.Namespace) -> None:
         os.environ["NIXOS_INSTALL_BOOTLOADER"] = "1"
 
     # flags to pass to bootctl install/update
-    bootctl_flags = []
+    bootctl_flags = [f"--boot-lib-dir={SYSTEMD}/lib/systemd/boot/efi", "--all-architectures"]
 
     if BOOT_MOUNT_POINT != EFI_SYS_MOUNT_POINT:
         bootctl_flags.append(f"--boot-path={BOOT_MOUNT_POINT}")
@@ -309,17 +310,17 @@ def install_bootloader(args: argparse.Namespace) -> None:
             os.unlink(LOADER_CONF)
 
         run(
-            [f"{SYSTEMD}/bin/bootctl", f"--esp-path={EFI_SYS_MOUNT_POINT}"]
+            [BOOTCTL, f"--esp-path={EFI_SYS_MOUNT_POINT}"]
             + bootctl_flags
             + ["install"]
         )
     else:
         # Update bootloader to latest if needed
         available_out = run(
-            [f"{SYSTEMD}/bin/bootctl", "--version"], stdout=subprocess.PIPE
+            [BOOTCTL, "--version"], stdout=subprocess.PIPE
         ).stdout.split()[2]
         installed_out = run(
-            [f"{SYSTEMD}/bin/bootctl", f"--esp-path={EFI_SYS_MOUNT_POINT}", "status"],
+            [BOOTCTL, f"--esp-path={EFI_SYS_MOUNT_POINT}", "status"],
             stdout=subprocess.PIPE,
         ).stdout
 
@@ -350,7 +351,7 @@ def install_bootloader(args: argparse.Namespace) -> None:
         if installed_version < available_version:
             print("updating systemd-boot from %s to %s" % (installed_version, available_version))
             run(
-                [f"{SYSTEMD}/bin/bootctl", f"--esp-path={EFI_SYS_MOUNT_POINT}"]
+                [BOOTCTL, f"--esp-path={EFI_SYS_MOUNT_POINT}"]
                 + bootctl_flags
                 + ["update"]
             )

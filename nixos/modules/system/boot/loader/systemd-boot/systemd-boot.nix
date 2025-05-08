@@ -33,80 +33,89 @@ let
 
   edk2ShellEspPath = "efi/edk2-uefi-shell/shell.efi";
 
-  systemdBootBuilder = pkgs.replaceVarsWith {
-    name = "systemd-boot";
+  systemdBootBuilder =
+    pkgs:
+    pkgs.replaceVarsWith {
+      name = "systemd-boot";
 
-    dir = "bin";
+      dir = "bin";
 
-    src = checkedSource;
+      src = checkedSource;
 
-    isExecutable = true;
+      isExecutable = true;
 
-    replacements = rec {
-      inherit (builtins) storeDir;
+      replacements = rec {
+        inherit (builtins) storeDir;
 
-      inherit (pkgs) python3;
+        inherit (pkgs) python3;
 
-      systemd = config.systemd.package;
+        systemd = config.systemd.package;
+        bootctl = "${
+          pkgs.systemd.overrideAttrs (old: {
+            patches = old.patches ++ [ ./bootctl.patch ];
+          })
+        }/bin/bootctl";
 
-      bootspecTools = config.boot.bootspec.package;
+        bootspecTools = config.boot.bootspec.package;
 
-      nix = config.nix.package.out;
+        nix = pkgs.nix;
 
-      configurationLimit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
+        configurationLimit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
 
-      inherit (cfg)
-        graceful
-        enableRandomSeed
-        ;
+        inherit (cfg)
+          graceful
+          enableRandomSeed
+          ;
 
-      inherit (efi) efiSysMountPoint canTouchEfiVariables;
+        inherit (efi) efiSysMountPoint canTouchEfiVariables;
 
-      loaderConf = format.generate cfg.settings;
+        loaderConf = format.generate cfg.settings;
 
-      bootMountPoint =
-        if cfg.xbootldrMountPoint != null then cfg.xbootldrMountPoint else efi.efiSysMountPoint;
+        bootMountPoint =
+          if cfg.xbootldrMountPoint != null then cfg.xbootldrMountPoint else efi.efiSysMountPoint;
 
-      nixosDir = "/EFI/nixos";
+        nixosDir = "/EFI/nixos";
 
-      inherit (config.system.nixos) distroName;
+        inherit (config.system.nixos) distroName;
 
-      checkMountpoints = pkgs.writeShellScript "check-mountpoints" ''
-        fail() {
-          echo "$1 = '$2' is not a mounted partition. Is the path configured correctly?" >&2
-          exit 1
-        }
-        ${pkgs.util-linuxMinimal}/bin/findmnt ${efiSysMountPoint} > /dev/null || fail efiSysMountPoint ${efiSysMountPoint}
-        ${lib.optionalString (cfg.xbootldrMountPoint != null)
-          "${pkgs.util-linuxMinimal}/bin/findmnt ${cfg.xbootldrMountPoint} > /dev/null || fail xbootldrMountPoint ${cfg.xbootldrMountPoint}"
-        }
-      '';
+        checkMountpoints = pkgs.writeShellScript "check-mountpoints" ''
+          fail() {
+            echo "$1 = '$2' is not a mounted partition. Is the path configured correctly?" >&2
+            exit 1
+          }
+          ${pkgs.util-linuxMinimal}/bin/findmnt ${efiSysMountPoint} > /dev/null || fail efiSysMountPoint ${efiSysMountPoint}
+          ${lib.optionalString (cfg.xbootldrMountPoint != null)
+            "${pkgs.util-linuxMinimal}/bin/findmnt ${cfg.xbootldrMountPoint} > /dev/null || fail xbootldrMountPoint ${cfg.xbootldrMountPoint}"
+          }
+        '';
 
-      copyExtraFiles = pkgs.writeShellScript "copy-extra-files" ''
-        empty_file=$(${pkgs.coreutils}/bin/mktemp)
+        copyExtraFiles = pkgs.writeShellScript "copy-extra-files" ''
+          empty_file=$(${pkgs.coreutils}/bin/mktemp)
 
-        ${concatStrings (
-          mapAttrsToList (n: v: ''
-            ${pkgs.coreutils}/bin/install -Dp "${v}" "${bootMountPoint}/"${escapeShellArg n}
-            ${pkgs.coreutils}/bin/install -D $empty_file "${bootMountPoint}/${nixosDir}/.extra-files/"${escapeShellArg n}
-          '') cfg.extraFiles
-        )}
+          ${concatStrings (
+            mapAttrsToList (n: v: ''
+              ${pkgs.coreutils}/bin/install -Dp "${v}" "${bootMountPoint}/"${escapeShellArg n}
+              ${pkgs.coreutils}/bin/install -D $empty_file "${bootMountPoint}/${nixosDir}/.extra-files/"${escapeShellArg n}
+            '') cfg.extraFiles
+          )}
 
-        ${concatStrings (
-          mapAttrsToList (n: v: ''
-            ${pkgs.coreutils}/bin/install -Dp "${pkgs.writeText n v}" "${bootMountPoint}/loader/entries/"${escapeShellArg n}
-            ${pkgs.coreutils}/bin/install -D $empty_file "${bootMountPoint}/${nixosDir}/.extra-files/loader/entries/"${escapeShellArg n}
-          '') cfg.extraEntries
-        )}
-      '';
+          ${concatStrings (
+            mapAttrsToList (n: v: ''
+              ${pkgs.coreutils}/bin/install -Dp "${pkgs.writeText n v}" "${bootMountPoint}/loader/entries/"${escapeShellArg n}
+              ${pkgs.coreutils}/bin/install -D $empty_file "${bootMountPoint}/${nixosDir}/.extra-files/loader/entries/"${escapeShellArg n}
+            '') cfg.extraEntries
+          )}
+        '';
+      };
     };
-  };
 
-  finalSystemdBootBuilder = pkgs.writeScript "install-systemd-boot.sh" ''
-    #!${pkgs.runtimeShell}
-    ${systemdBootBuilder}/bin/systemd-boot "$@"
-    ${cfg.extraInstallCommands}
-  '';
+  finalSystemdBootBuilder =
+    pkgs:
+    pkgs.writeScript "install-systemd-boot.sh" ''
+      #!${pkgs.runtimeShell}
+      ${systemdBootBuilder pkgs}/bin/systemd-boot "$@"
+      ${cfg.extraInstallCommands}
+    '';
 in
 {
 
