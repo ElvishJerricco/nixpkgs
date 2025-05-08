@@ -44,9 +44,9 @@ let
           mkdir -p ./chroot/nix/var/nix/profiles
           ln -s "${config.system.build.toplevel}" ./chroot/nix/var/nix/profiles/system-1-link
           ln -s system-1-link ./chroot/nix/var/nix/profiles/system
-          chroot ./chroot ${limineInstaller} "${config.system.build.toplevel}"
-          exec chroot ./chroot ${sdBootInstaller pkgs} "${config.system.build.toplevel}"
+          exec chroot ./chroot ${sdBootInstaller pkgs.buildPackages} "${config.system.build.toplevel}"
         '';
+        # chroot ./chroot ${limineInstaller} "${config.system.build.toplevel}"
       };
     in
     pkgs.runCommand "esp" { } "mkdir $out; ${script}/bin/mkesp $out";
@@ -58,6 +58,9 @@ in
     # "${modulesPath}/profiles/installation-device.nix"
   ];
   services.getty.autologinUser = "root";
+
+  nixpkgs.buildPlatform = lib.systems.examples.gnu64;
+  nixpkgs.hostPlatform = lib.systems.examples.aarch64-multiplatform;
 
   boot.loader.systemd-boot = {
     enable = true;
@@ -103,8 +106,8 @@ in
   };
 
   boot.kernelParams = [
-    "console=ttyS0"
-    "console=tty0"
+    # "console=ttyS0"
+    # "console=tty0"
   ];
 
   system.build.installBootLoader = lib.mkForce (_: "");
@@ -114,11 +117,12 @@ in
     split = true;
     extraBuildCommands = ''
       rm gen-boot.raw
-      mkdir -p iso/boot iso/limine
+      mkdir iso
+      # mkdir -p iso/boot iso/limine
       mv -v gen-boot.esp.raw esp.raw
       mv -v gen-boot.linux-generic.raw iso/nix-store.squashfs
-      cp -v ${limine}/share/limine/limine-bios-cd.bin iso/limine/
-      ${pkgs.xorriso}/bin/xorriso \
+      # cp -v ${limine}/share/limine/limine-bios-cd.bin iso/limine/
+      ${pkgs.buildPackages.xorriso}/bin/xorriso \
         -volume_date all_file_dates =$SOURCE_DATE_EPOCH \
         -as mkisofs \
         -R -r -J \
@@ -129,15 +133,15 @@ in
         ./iso \
         --protective-msdos-label \
         -partition_offset 16 \
-        -b limine/limine-bios-cd.bin \
-        -no-emul-boot -boot-load-size 4 -boot-info-table \
         -append_partition 2 0xef esp.raw -appended_part_as_gpt \
         -eltorito-alt-boot \
         -e --interval:appended_partition_2:all:: -no-emul-boot \
         -o gen-boot.iso
 
-      ${limine}/bin/limine bios-install gen-boot.iso \
-        --no-gpt-to-mbr-isohybrid-conversion
+      #   -b limine/limine-bios-cd.bin \
+      #   -no-emul-boot -boot-load-size 4 -boot-info-table \
+      # ${limine}/bin/limine bios-install gen-boot.iso \
+      #   --no-gpt-to-mbr-isohybrid-conversion
     '';
 
     mkfsOptions.vfat = [
