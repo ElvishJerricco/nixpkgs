@@ -7,36 +7,38 @@
 let
   cfg = config.boot.loader.limine;
   efi = config.boot.loader.efi;
-  limineInstallConfig = pkgs.writeText "limine-install.json" (
-    builtins.toJSON {
-      nixPath = config.nix.package;
-      efiBootMgrPath = pkgs.efibootmgr;
-      liminePath = cfg.package;
-      efiMountPoint = efi.efiSysMountPoint;
-      fileSystems = config.fileSystems;
-      luksDevices = builtins.attrNames config.boot.initrd.luks.devices;
-      canTouchEfiVariables = efi.canTouchEfiVariables;
-      efiSupport = cfg.efiSupport;
-      efiRemovable = cfg.efiInstallAsRemovable;
-      secureBoot = cfg.secureBoot;
-      biosSupport = cfg.biosSupport;
-      biosDevice = cfg.biosDevice;
-      partitionIndex = cfg.partitionIndex;
-      forceMbr = cfg.forceMbr;
-      enrollConfig = cfg.enrollConfig;
-      style = cfg.style;
-      maxGenerations = if cfg.maxGenerations == null then 0 else cfg.maxGenerations;
-      hostArchitecture = pkgs.stdenv.hostPlatform.parsed.cpu;
-      timeout = if config.boot.loader.timeout != null then config.boot.loader.timeout else 10;
-      enableEditor = cfg.enableEditor;
-      extraConfig = cfg.extraConfig;
-      extraEntries = cfg.extraEntries;
-      additionalFiles = cfg.additionalFiles;
-      validateChecksums = cfg.validateChecksums;
-      panicOnChecksumMismatch = cfg.panicOnChecksumMismatch;
-      bootDirectory = cfg.bootDirectory;
-    }
-  );
+  limineInstallConfig =
+    pkgs:
+    pkgs.writeText "limine-install.json" (
+      builtins.toJSON {
+        nixPath = config.nix.package;
+        efiBootMgrPath = pkgs.efibootmgr;
+        liminePath = cfg.package;
+        efiMountPoint = efi.efiSysMountPoint;
+        fileSystems = config.fileSystems;
+        luksDevices = builtins.attrNames config.boot.initrd.luks.devices;
+        canTouchEfiVariables = efi.canTouchEfiVariables;
+        efiSupport = cfg.efiSupport;
+        efiRemovable = cfg.efiInstallAsRemovable;
+        secureBoot = cfg.secureBoot;
+        biosSupport = cfg.biosSupport;
+        biosDevice = cfg.biosDevice;
+        partitionIndex = cfg.partitionIndex;
+        forceMbr = cfg.forceMbr;
+        enrollConfig = cfg.enrollConfig;
+        style = cfg.style;
+        maxGenerations = if cfg.maxGenerations == null then 0 else cfg.maxGenerations;
+        hostArchitecture = pkgs.stdenv.hostPlatform.parsed.cpu;
+        timeout = if config.boot.loader.timeout != null then config.boot.loader.timeout else 10;
+        enableEditor = cfg.enableEditor;
+        extraConfig = cfg.extraConfig;
+        extraEntries = cfg.extraEntries;
+        additionalFiles = cfg.additionalFiles;
+        validateChecksums = cfg.validateChecksums;
+        panicOnChecksumMismatch = cfg.panicOnChecksumMismatch;
+        bootDirectory = cfg.bootDirectory;
+      }
+    );
   defaultWallpaper = pkgs.nixos-artwork.wallpapers.simple-dark-gray-bootloader.gnomeFilePath;
 in
 {
@@ -400,14 +402,17 @@ in
 
       system = {
         boot.loader.id = "limine";
-        build.installBootLoader = pkgs.replaceVarsWith {
-          src = ./limine-install.py;
-          isExecutable = true;
-          replacements = {
-            python3 = pkgs.python3.withPackages (python-packages: [ python-packages.psutil ]);
-            configPath = limineInstallConfig;
+        build.installBootLoader =
+          pkgs:
+          pkgs.substituteAll {
+            src = ./limine-install.py;
+            isExecutable = true;
+
+            replacements = {
+              python3 = pkgs.python3.withPackages (python-packages: [ python-packages.psutil ]);
+              configPath = limineInstallConfig pkgs;
+            };
           };
-        };
       };
     })
     (lib.mkIf (cfg.enable && cfg.secureBoot.enable) {

@@ -111,10 +111,12 @@
         ];
       };
 
-      system.build.installBootLoader = pkgs.writeScript "install-lxc-sbin-init.sh" ''
-        #!${pkgs.runtimeShell}
-        ${pkgs.coreutils}/bin/ln -fs "$1/${initScript}" /sbin/init
-      '';
+      system.build.installBootLoader =
+        pkgs:
+        pkgs.writeScript "install-lxc-sbin-init.sh" ''
+          #!${pkgs.runtimeShell}
+          ${pkgs.coreutils}/bin/ln -fs "$1/${initScript}" /sbin/init
+        '';
 
       # networkd depends on this, but systemd module disables this for containers
       systemd.additionalUpstreamSystemUnits = [ "systemd-udev-trigger.service" ];

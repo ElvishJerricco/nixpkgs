@@ -9,19 +9,21 @@ with lib;
 
 let
 
-  generationsDirBuilder = pkgs.replaceVarsWith {
-    src = ./generations-dir-builder.sh;
-    isExecutable = true;
-    replacements = {
-      inherit (pkgs) bash;
-      path = lib.makeBinPath [
-        pkgs.coreutils
-        pkgs.gnused
-        pkgs.gnugrep
-      ];
-      inherit (config.boot.loader.generationsDir) copyKernels;
+  generationsDirBuilder =
+    pkgs:
+    pkgs.replaceVarsWith {
+      src = ./generations-dir-builder.sh;
+      isExecutable = true;
+      replacements = {
+        inherit (pkgs) bash;
+        path = lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.gnused
+          pkgs.gnugrep
+        ];
+        inherit (config.boot.loader.generationsDir) copyKernels;
+      };
     };
-  };
 
 in
 

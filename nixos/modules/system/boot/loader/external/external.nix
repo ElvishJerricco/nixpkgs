@@ -24,7 +24,7 @@ in
     enable = mkEnableOption "using an external tool to install your bootloader";
 
     installHook = mkOption {
-      type = with types; path;
+      type = with types; either path (unique { message = "only one hook plz"; } (functionTo path));
       description = ''
         The full path to a program of your choosing which performs the bootloader installation process.
 

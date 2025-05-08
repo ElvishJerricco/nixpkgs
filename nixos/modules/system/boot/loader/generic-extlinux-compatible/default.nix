@@ -15,7 +15,7 @@ let
   timeoutStr = if blCfg.timeout == null then "-1" else toString blCfg.timeout;
 
   # The builder used to write during system activation
-  builder = import ./extlinux-conf-builder.nix { inherit lib pkgs; };
+  builder = pkgs: import ./extlinux-conf-builder.nix { inherit lib pkgs; };
   # The builder exposed in populateCmd, which runs on the build architecture
   populateBuilder = import ./extlinux-conf-builder.nix {
     inherit lib;
@@ -108,15 +108,17 @@ in
         "-g ${toString cfg.configurationLimit} -t ${timeoutStr}"
         + lib.optionalString (dtCfg.name != null) " -n ${dtCfg.name}"
         + lib.optionalString (!cfg.useGenerationDeviceTree) " -r";
-      installBootLoader = pkgs.writeScript "install-extlinux-conf.sh" (
-        ''
-          #!${pkgs.runtimeShell}
-          set -e
-        ''
-        + flip concatMapStrings cfg.mirroredBoots (args: ''
-          ${builder} ${builderArgs} -d '${args.path}' -c "$@"
-        '')
-      );
+      installBootLoader =
+        pkgs:
+        pkgs.writeScript "install-extlinux-conf.sh" (
+          ''
+            #!${pkgs.runtimeShell}
+            set -e
+          ''
+          + flip concatMapStrings cfg.mirroredBoots (args: ''
+            ${builder pkgs} ${builderArgs} -d '${args.path}' -c "$@"
+          '')
+        );
     in
     mkIf cfg.enable {
       system.build.installBootLoader = installBootLoader;

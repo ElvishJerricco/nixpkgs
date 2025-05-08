@@ -60,7 +60,7 @@ let
   f = x: optionalString (x != null) ("" + x);
 
   grubConfig =
-    args:
+    pkgs: args:
     let
       efiSysMountPoint = if args.efiSysMountPoint == null then args.path else args.efiSysMountPoint;
       efiSysMountPoint' = replaceStrings [ "/" ] [ "-" ] efiSysMountPoint;
@@ -804,6 +804,7 @@ in
       '';
 
       system.build.installBootLoader =
+        pkgs:
         let
           install-grub-pl = pkgs.replaceVars ./install-grub.pl {
             utillinux = pkgs.util-linux;
@@ -832,7 +833,7 @@ in
             ${optionalString cfg.enableCryptodisk "export GRUB_ENABLE_CRYPTODISK=y"}
           ''
           + flip concatMapStrings cfg.mirroredBoots (args: ''
-            ${perl}/bin/perl ${install-grub-pl} ${grubConfig args} $@
+            ${perl}/bin/perl ${install-grub-pl} ${grubConfig pkgs args} $@
           '')
           + cfg.extraInstallCommands
         );

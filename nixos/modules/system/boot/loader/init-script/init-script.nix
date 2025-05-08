@@ -9,19 +9,21 @@ with lib;
 
 let
 
-  initScriptBuilder = pkgs.replaceVarsWith {
-    src = ./init-script-builder.sh;
-    isExecutable = true;
-    replacements = {
-      inherit (pkgs) bash;
-      inherit (config.system.nixos) distroName;
-      path = lib.makeBinPath [
-        pkgs.coreutils
-        pkgs.gnused
-        pkgs.gnugrep
-      ];
+  initScriptBuilder =
+    pkgs:
+    pkgs.replaceVarsWith {
+      src = ./init-script-builder.sh;
+      isExecutable = true;
+      replacements = {
+        inherit (pkgs) bash;
+        inherit (config.system.nixos) distroName;
+        path = lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.gnused
+          pkgs.gnugrep
+        ];
+      };
     };
-  };
 
 in
 
