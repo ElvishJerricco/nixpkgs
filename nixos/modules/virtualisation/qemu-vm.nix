@@ -328,14 +328,6 @@ let
   espFilesystemLabel = "ESP"; # Hard-coded by make-disk-image.nix
   nixStoreFilesystemLabel = "nix-store";
 
-  # The root drive is a raw disk which does not necessarily contain a
-  # filesystem or partition table. It thus cannot be identified via the typical
-  # persistent naming schemes (e.g. /dev/disk/by-{label, uuid, partlabel,
-  # partuuid}. Instead, supply a well-defined and persistent serial attribute
-  # via QEMU. Inside the running system, the disk can then be identified via
-  # the /dev/disk/by-id scheme.
-  rootDriveSerialAttr = "root";
-
   # System image is akin to a complete NixOS install with
   # a boot partition and root partition.
   systemImage = import ../../lib/make-disk-image.nix {
@@ -428,10 +420,25 @@ in
       '';
     };
 
+    # The root drive is a raw disk which does not necessarily contain a
+    # filesystem or partition table. It thus cannot be identified via the typical
+    # persistent naming schemes (e.g. /dev/disk/by-{label, uuid, partlabel,
+    # partuuid}. Instead, supply a well-defined and persistent serial attribute
+    # via QEMU. Inside the running system, the disk can then be identified via
+    # the /dev/disk/by-id scheme.
+    virtualisation.rootDeviceSerial = mkOption {
+      type = types.str;
+      default = "root";
+      example = "target";
+      description = ''
+        The serial given to the root device.
+      '';
+    };
+
     virtualisation.bootLoaderDevice = mkOption {
       type = types.path;
-      default = "/dev/disk/by-id/virtio-${rootDriveSerialAttr}";
-      defaultText = literalExpression ''/dev/disk/by-id/virtio-${rootDriveSerialAttr}'';
+      default = "/dev/disk/by-id/virtio-${cfg.rootDeviceSerial}";
+      defaultText = literalExpression ''/dev/disk/by-id/virtio-${cfg.rootDeviceSerial}'';
       example = "/dev/disk/by-id/virtio-boot-loader-device";
       description = ''
         The path (inside th VM) to the device to boot from when legacy booting.
@@ -1317,7 +1324,7 @@ in
           driveExtraOpts.cache = "writeback";
           driveExtraOpts.werror = "report";
           deviceExtraOpts.bootindex = "1";
-          deviceExtraOpts.serial = rootDriveSerialAttr;
+          deviceExtraOpts.serial = cfg.rootDeviceSerial;
         }
       ])
       (mkIf cfg.useNixStoreImage [
