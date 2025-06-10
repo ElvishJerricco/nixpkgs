@@ -1,0 +1,291 @@
+diff --git a/src/libstore/include/nix/store/globals.hh b/src/libstore/include/nix/store/globals.hh
+index 82211d8dc1..caf8f6dcb8 100644
+--- a/src/libstore/include/nix/store/globals.hh
++++ b/src/libstore/include/nix/store/globals.hh
+@@ -403,6 +403,13 @@
+           but reduces performance. The default is `false`.
+         )"};
+ 
++    Setting<bool> fsverityStorePaths{this, false, "fsverity-store-paths",
++        R"(
++          Whether to enable fs-verity on store paths before registering them.
++          This setting has no effect if the underlying file system or kernel does
++          not support fs-verity. The default is `false`.
++        )"};
++
+     Setting<bool> useSQLiteWAL{this, !isWSL1(), "use-sqlite-wal",
+         "Whether SQLite should use WAL mode."};
+ 
+diff --git a/src/libstore/local-store.cc b/src/libstore/local-store.cc
+index 949f0f74f1..f0f05ab317 100644
+--- a/src/libstore/local-store.cc
++++ b/src/libstore/local-store.cc
+@@ -1144,6 +1144,10 @@
+ 
+                 optimisePath(realPath, repair); // FIXME: combine with hashPath()
+ 
++                if (settings.fsverityStorePaths) {
++                    fsverityEnable(realPath);
++                }
++
+                 if (settings.fsyncStorePaths) {
+                     recursiveSync(realPath);
+                     syncParent(realPath);
+@@ -1305,6 +1309,10 @@
+ 
+             optimisePath(realPath, repair);
+ 
++            if (settings.fsverityStorePaths) {
++                fsverityEnable(realPath);
++            }
++
+             if (settings.fsyncStorePaths) {
+                 recursiveSync(realPath);
+                 syncParent(realPath);
+diff --git a/src/libutil/file-descriptor.cc b/src/libutil/file-descriptor.cc
+index 9e0827442a..ba76b4461f 100644
+--- a/src/libutil/file-descriptor.cc
++++ b/src/libutil/file-descriptor.cc
+@@ -3,6 +3,7 @@
+ 
+ #include <fcntl.h>
+ #include <unistd.h>
++#include <libfsverity.h>
+ #ifdef _WIN32
+ # include <winnt.h>
+ # include <fileapi.h>
+@@ -121,6 +122,26 @@
+ #endif
+ }
+ 
++void AutoCloseFD::fsverity() const
++{
++#if __linux__
++    if (fd != -1) {
++        int result;
++        struct libfsverity_merkle_tree_params params;
++        params.version = 1;
++        params.hash_algorithm = FS_VERITY_HASH_ALG_SHA256;
++        params.file_size = 0; // unused
++        params.block_size = 0; // default
++        params.salt_size = 0;
++        params.salt = NULL;
++        params.metadata_callbacks = NULL; // unused
++        result = libfsverity_enable(fd, &params);
++        if (result && result != -EEXIST && result != -ENOTTY && result != EOPNOTSUPP)
++            throw SysError(-result, "enabling fsverity");
++    }
++#endif
++}
++
+ 
+ AutoCloseFD::operator bool() const
+ {
+diff --git a/src/libutil/file-system.cc b/src/libutil/file-system.cc
+index 6fb797103c..4a00cbf8ae 100644
+--- a/src/libutil/file-system.cc
++++ b/src/libutil/file-system.cc
+@@ -381,6 +381,44 @@
+ }
+ 
+ 
++void fsverityEnable(const Path & path)
++{
++    /* If it's a file or symlink, just enable verity and return. */
++    auto st = lstat(path);
++    if (S_ISREG(st.st_mode)) {
++        AutoCloseFD fd = toDescriptor(open(path.c_str(), O_RDONLY, 0));
++        if (!fd)
++            throw SysError("opening file '%1%'", path);
++        debug("fsverity: %1%", path);
++        fd.fsverity();
++        return;
++    } else if (S_ISLNK(st.st_mode))
++        return;
++
++    /* Otherwise, perform a depth-first traversal of the directory and
++       fsync all the files. */
++    std::deque<fs::path> dirsToEnumerate;
++    dirsToEnumerate.push_back(path);
++    while (!dirsToEnumerate.empty()) {
++        auto currentDir = dirsToEnumerate.back();
++        dirsToEnumerate.pop_back();
++        for (auto & entry : std::filesystem::directory_iterator(currentDir)) {
++            auto st = entry.symlink_status();
++            if (fs::is_directory(st)) {
++                dirsToEnumerate.emplace_back(entry.path());
++            } else if (fs::is_regular_file(st)) {
++                auto st = lstat(entry.path());
++                debug("fsverity inner loop: %1%", entry.path());
++                AutoCloseFD fd = toDescriptor(open(entry.path().string().c_str(), O_RDONLY, 0));
++                if (!fd)
++                    throw SysError("opening file '%1%'", entry.path());
++                fd.fsverity();
++            }
++        }
++    }
++}
++
++
+ static void _deletePath(Descriptor parentfd, const fs::path & path, uint64_t & bytesFreed)
+ {
+ #ifndef _WIN32
+diff --git a/src/libutil/include/nix/util/file-descriptor.hh b/src/libutil/include/nix/util/file-descriptor.hh
+index 4f13a9a8fd..32c8eedca6 100644
+--- a/src/libutil/include/nix/util/file-descriptor.hh
++++ b/src/libutil/include/nix/util/file-descriptor.hh
+@@ -175,6 +175,11 @@
+      * fsync must be run later even if this is called.
+      */
+     void startFsync() const;
++
++    /**
++     * Enable fsverity on the file, if supported.
++     */
++    void fsverity() const;
+ };
+ 
+ class Pipe
+diff --git a/src/libutil/include/nix/util/file-system.hh b/src/libutil/include/nix/util/file-system.hh
+index acae883066..6221107f2d 100644
+--- a/src/libutil/include/nix/util/file-system.hh
++++ b/src/libutil/include/nix/util/file-system.hh
+@@ -219,6 +219,11 @@
+ void recursiveSync(const Path & path);
+ 
+ /**
++ * Enable fsverity on all files in a directory tree.
++ */
++void fsverityEnable(const Path & path);
++
++/**
+  * Delete a path; i.e., in the case of a directory, it is deleted
+  * recursively. It's not an error if the path does not exist. The
+  * second variant returns the number of bytes and blocks freed.
+diff --git a/src/libutil/meson.build b/src/libutil/meson.build
+index 2a07e4a911..ed4b8f26a5 100644
+--- a/src/libutil/meson.build
++++ b/src/libutil/meson.build
+@@ -54,6 +54,12 @@
+ )
+ deps_private += blake3
+ 
++libfsverity = dependency(
++  'libfsverity',
++  version: '>= 1.6',
++)
++deps_private += libfsverity
++
+ boost = dependency(
+   'boost',
+   modules : ['context', 'coroutine'],
+diff --git a/src/libutil/package.nix b/src/libutil/package.nix
+index 17c84ff185..d70d8e4b72 100644
+--- a/src/libutil/package.nix
++++ b/src/libutil/package.nix
+@@ -5,6 +5,7 @@
+ 
+   boost,
+   brotli,
++  fsverity-utils,
+   libarchive,
+   libblake3,
+   libcpuid,
+@@ -47,6 +48,7 @@
+ 
+   buildInputs = [
+     brotli
++    fsverity-utils
+     libblake3
+     libsodium
+     openssl
+diff --git a/tests/nixos/default.nix b/tests/nixos/default.nix
+index 3e2d20a715..31093421b1 100644
+--- a/tests/nixos/default.nix
++++ b/tests/nixos/default.nix
+@@ -198,6 +198,8 @@
+ 
+   fsync = runNixOSTestFor "x86_64-linux" ./fsync.nix;
+ 
++  fsverity = runNixOSTestFor "x86_64-linux" ./fsverity.nix;
++
+   cgroups = runNixOSTestFor "x86_64-linux" ./cgroups;
+ 
+   fetchurl = runNixOSTestFor "x86_64-linux" ./fetchurl.nix;
+diff --git a/tests/nixos/fsverity.nix b/tests/nixos/fsverity.nix
+new file mode 100644
+index 0000000000..ea4ad4556d
+--- /dev/null
++++ b/tests/nixos/fsverity.nix
+@@ -0,0 +1,71 @@
++{
++  lib,
++  config,
++  nixpkgs,
++  pkgs,
++  ...
++}:
++
++let
++  pkg1 = pkgs.go;
++in
++
++{
++  name = "fsync";
++
++  nodes.machine =
++    {
++      config,
++      lib,
++      pkgs,
++      ...
++    }:
++    {
++      boot.kernelPatches = [
++        {
++          name = "fs-verity";
++          patch = null;
++          extraStructuredConfig = {
++            FS_VERITY = lib.kernel.yes;
++          };
++        }
++      ];
++      virtualisation.emptyDiskImages = [ 1024 ];
++      environment.systemPackages = [ pkg1 pkgs.fsverity-utils ];
++      nix.settings.experimental-features = [ "nix-command" ];
++      nix.settings.fsync-store-paths = true;
++      nix.settings.fsverity-store-paths = true;
++      nix.settings.require-sigs = false;
++      boot.supportedFilesystems = [
++        "ext4"
++        "btrfs"
++      ];
++    };
++
++  testScript =
++    { nodes }:
++    ''
++      # fmt: off
++      for fs in ("ext4", "btrfs"):
++        machine.succeed("mkfs.{} {} /dev/vdb".format(fs, "-O verity -F" if fs == "ext4" else "-f"))
++        machine.succeed("mkdir -p /mnt")
++        machine.succeed("mount /dev/vdb /mnt")
++        machine.succeed("sync")
++        machine.succeed("nix copy --offline ${pkg1} --to /mnt")
++        machine.crash()
++
++        machine.start()
++        machine.wait_for_unit("multi-user.target")
++        machine.succeed("mkdir -p /mnt")
++        machine.succeed("mount /dev/vdb /mnt")
++        machine.succeed("nix path-info --offline --store /mnt ${pkg1}")
++        machine.succeed("nix store verify --all --store /mnt --no-trust")
++        machine.succeed("find /mnt${pkg1} -type f -print0 | xargs -0 -n 1 fsverity measure")
++
++        machine.succeed("echo test > ./test.txt")
++        path = machine.succeed("nix store add --store /mnt --mode flat ./test.txt").strip()
++        machine.succeed(f"fsverity measure /mnt{path}")
++
++        machine.succeed("umount /dev/vdb")
++    '';
++}
