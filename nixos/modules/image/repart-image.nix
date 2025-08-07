@@ -145,6 +145,11 @@ stdenvNoCC.mkDerivation (
   // {
     __structuredAttrs = true;
 
+    outputs = [
+      "out"
+      "definitions"
+    ];
+
     # the image will be self-contained so we can drop references
     # to the closure that was used to build it
     unsafeDiscardReferences.out = true;
@@ -231,6 +236,7 @@ stdenvNoCC.mkDerivation (
     ''
     + ''
       mv -v repart-output.json ${imageFileBasename}* $out
+      cp -r -d -v "$amendedRepartDefinitionsDir" "$definitions"
 
       runHook postInstall
     '';
