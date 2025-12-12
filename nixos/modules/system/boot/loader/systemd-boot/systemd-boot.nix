@@ -89,13 +89,6 @@ let
             ${pkgs.coreutils}/bin/install -D /dev/null "${bootMountPoint}/${nixosDir}/.extra-files/"${escapeShellArg n}
           '') cfg.extraFiles
         )}
-
-        ${concatStrings (
-          mapAttrsToList (n: v: ''
-            ${pkgs.coreutils}/bin/install -Dp "${pkgs.writeText n v}" "${bootMountPoint}/loader/entries/"${escapeShellArg n}
-            ${pkgs.coreutils}/bin/install -D /dev/null "${bootMountPoint}/${nixosDir}/.extra-files/loader/entries/"${escapeShellArg n}
-          '') cfg.extraEntries
-        )}
       '';
     };
   };
@@ -586,6 +579,10 @@ in
       (mkIf (cfg.edk2-uefi-shell.enable || cfg.windows != { }) {
         ${edk2ShellEspPath} = "${pkgs.edk2-uefi-shell}/shell.efi";
       })
+      (lib.mapAttrs' (n: v: {
+        name = "loader/entries/${n}";
+        value = pkgs.writeText n v;
+      }) cfg.extraEntries)
     ];
 
     boot.loader.systemd-boot.extraEntries = mkMerge (
