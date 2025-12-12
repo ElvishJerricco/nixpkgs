@@ -35,7 +35,6 @@ class Config:
     can_touch_efi_variables: bool
     graceful: bool
     copy_extra_files: str
-    check_mountpoints: str
     store_dir: str
 
     def loader_conf(self) -> Path:
@@ -518,6 +517,28 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
     run([cfg.copy_extra_files])
 
 
+def check_mountpoints(cfg: Config) -> None:
+    esp_check = subprocess.run(
+        ["findmnt", cfg.efi_sys_mount_point], check=False, stdout=subprocess.DEVNULL
+    )
+    if esp_check.returncode != 0:
+        print(
+            f"efiSysMountPoint = '{cfg.efi_sys_mount_point}' is not a mounted partition. Is the path configured correctly?",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    xbootldr_check = subprocess.run(
+        ["findmnt", cfg.boot_mount_point], check=False, stdout=subprocess.DEVNULL
+    )
+    if xbootldr_check.returncode != 0:
+        print(
+            f"xbootldrMountPoint = '{cfg.boot_mount_point}' is not a mounted partition. Is the path configured correctly?",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=f"Update {DISTRO_NAME}-related systemd-boot files"
@@ -549,7 +570,7 @@ def main() -> None:
     cfg = Config(**builder_config_json)
     print(cfg, file=sys.stderr)
 
-    run([cfg.check_mountpoints])
+    check_mountpoints(cfg)
 
     try:
         install_bootloader(cfg, args)

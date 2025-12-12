@@ -49,16 +49,6 @@ let
       graceful = cfg.graceful;
       configuration_limit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
       can_touch_efi_variables = efi.canTouchEfiVariables;
-      check_mountpoints = pkgs.writeShellScript "check-mountpoints" ''
-        fail() {
-          echo "$1 = '$2' is not a mounted partition. Is the path configured correctly?" >&2
-          exit 1
-        }
-        ${pkgs.util-linuxMinimal}/bin/findmnt ${efi.efiSysMountPoint} > /dev/null || fail efiSysMountPoint ${efi.efiSysMountPoint}
-        ${lib.optionalString (cfg.xbootldrMountPoint != null)
-          "${pkgs.util-linuxMinimal}/bin/findmnt ${cfg.xbootldrMountPoint} > /dev/null || fail xbootldrMountPoint ${cfg.xbootldrMountPoint}"
-        }
-      '';
       copy_extra_files = pkgs.writeShellScript "copy-extra-files" ''
         ${concatStrings (
           mapAttrsToList (n: v: ''
@@ -95,6 +85,7 @@ let
 
   finalSystemdBootBuilder = pkgs.writeScript "install-systemd-boot.sh" ''
     #!${pkgs.runtimeShell}
+    PATH="${lib.makeBinPath [ pkgs.util-linuxMinimal ]}:$PATH"
     ${systemdBootBuilder}/bin/systemd-boot ${builderCfg} "$@"
     ${cfg.extraInstallCommands}
   '';
