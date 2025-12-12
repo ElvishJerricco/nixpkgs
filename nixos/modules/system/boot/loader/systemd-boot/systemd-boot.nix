@@ -49,14 +49,7 @@ let
       graceful = cfg.graceful;
       configuration_limit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
       can_touch_efi_variables = efi.canTouchEfiVariables;
-      copy_extra_files = pkgs.writeShellScript "copy-extra-files" ''
-        ${concatStrings (
-          mapAttrsToList (n: v: ''
-            ${pkgs.coreutils}/bin/install -Dp "${v}" "${boot_mount_point}/"${escapeShellArg n}
-            ${pkgs.coreutils}/bin/install -D /dev/null "${boot_mount_point}/${nixosDir}/.extra-files/"${escapeShellArg n}
-          '') cfg.extraFiles
-        )}
-      '';
+      extra_files = cfg.extraFiles;
     }
   );
 

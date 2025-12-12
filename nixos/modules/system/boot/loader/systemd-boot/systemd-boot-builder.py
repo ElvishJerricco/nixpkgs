@@ -34,7 +34,7 @@ class Config:
     reboot_for_bitlocker: bool
     can_touch_efi_variables: bool
     graceful: bool
-    copy_extra_files: str
+    extra_files: dict[Path, Path]
     store_dir: str
 
     def loader_conf(self) -> Path:
@@ -75,14 +75,16 @@ class SystemIdentifier(NamedTuple):
     specialisation: str | None
 
 
+def copy_with_temp(source: Path, dest: Path) -> None:
+    tmpfd, tmppath = tempfile.mkstemp(dir=dest.parent, prefix=dest.name, suffix=".tmp.")
+    shutil.copyfile(source, tmppath)
+    os.fsync(tmpfd)
+    shutil.move(tmppath, dest)
+
+
 def copy_if_not_exists(source: Path, dest: Path) -> None:
     if not dest.exists():
-        tmpfd, tmppath = tempfile.mkstemp(
-            dir=dest.parent, prefix=dest.name, suffix=".tmp."
-        )
-        shutil.copyfile(source, tmppath)
-        os.fsync(tmpfd)
-        shutil.move(tmppath, dest)
+        copy_with_temp(source, dest)
 
 
 def generation_dir(profile: str | None, generation: int) -> Path:
@@ -514,7 +516,18 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
 
     extra_files_dir.mkdir(parents=True, exist_ok=True)
 
-    run([cfg.copy_extra_files])
+    for extra_target, extra_source in cfg.extra_files.items():
+        boot_target = cfg.boot_mount_point / extra_target
+        hidden_target = (
+            cfg.boot_mount_point / cfg.nixos_dir / ".extra-files" / extra_target
+        )
+
+        hidden_target.parent.mkdir(parents=True, exist_ok=True)
+        hidden_target.write_bytes(b"")
+
+        # We shouldn't have to worry about symlinks here right?
+        boot_target.parent.mkdir(parents=True, exist_ok=True)
+        copy_with_temp(extra_source, boot_target)
 
 
 def check_mountpoints(cfg: Config) -> None:
@@ -565,6 +578,11 @@ def main() -> None:
         builder_config_json["boot_mount_point"]
     )
     builder_config_json["nixos_dir"] = Path(builder_config_json["nixos_dir"].strip("/"))
+    builder_config_json["extra_files"] = {
+        p.relative_to(p.anchor) if p.is_absolute() else p: Path(v)
+        for k, v in builder_config_json["extra_files"].items()
+        if (p := Path(k))
+    }
 
     # TODO: This is not type-checking the arguments
     cfg = Config(**builder_config_json)
