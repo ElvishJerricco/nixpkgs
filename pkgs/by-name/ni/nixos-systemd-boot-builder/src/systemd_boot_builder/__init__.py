@@ -1,4 +1,3 @@
-#! @python3@/bin/python3 -B
 import argparse
 import ctypes
 import datetime
@@ -607,7 +606,3 @@ def main() -> None:
                     f"could not sync {cfg.efi_sys_mount_point}: {os.strerror(rc)}",
                     file=sys.stderr,
                 )
-
-
-if __name__ == "__main__":
-    main()

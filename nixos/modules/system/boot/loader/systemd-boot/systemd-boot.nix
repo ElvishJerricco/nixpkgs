@@ -12,23 +12,6 @@ let
 
   efi = config.boot.loader.efi;
 
-  # We check the source code in a derivation that does not depend on the
-  # system configuration so that most users don't have to redo the check and require
-  # the necessary dependencies.
-  checkedSource =
-    pkgs.runCommand "systemd-boot"
-      {
-        preferLocalBuild = true;
-      }
-      ''
-        install -m755 -D ${./systemd-boot-builder.py} $out
-        ${lib.getExe pkgs.buildPackages.mypy} \
-          --no-implicit-optional \
-          --disallow-untyped-calls \
-          --disallow-untyped-defs \
-          $out
-      '';
-
   edk2ShellEspPath = "efi/edk2-uefi-shell/shell.efi";
 
   nixosDir = "/EFI/nixos";
@@ -53,32 +36,17 @@ let
     }
   );
 
-  systemdBootBuilder = pkgs.replaceVarsWith {
-    name = "systemd-boot";
-
-    dir = "bin";
-
-    src = checkedSource;
-
-    isExecutable = true;
-
-    replacements = {
-
-      inherit (pkgs) python3;
-    };
+  systemd-boot-builder = pkgs.nixos-systemd-boot-builder.override {
+    util-linux = config.systemd.package.util-linux;
+    systemd = config.systemd.package;
+    bootspec = config.boot.bootspec.package;
+    nix = config.nix.package;
+    inherit (config.system.nixos) distroName;
   };
 
   finalSystemdBootBuilder = pkgs.writeScript "install-systemd-boot.sh" ''
     #!${pkgs.runtimeShell}
-    PATH="${
-      lib.makeBinPath [
-        pkgs.util-linuxMinimal
-        config.systemd.package
-        config.boot.bootspec.package
-        config.nix.package
-      ]
-    }:$PATH"
-    NIXOS_DISTRO_NAME=${config.system.nixos.distroName} ${systemdBootBuilder}/bin/systemd-boot ${builderCfg} "$@"
+    ${systemd-boot-builder}/bin/systemd-boot-builder ${builderCfg} "$@"
     ${cfg.extraInstallCommands}
   '';
 in

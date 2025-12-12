@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "systemd-boot-builder"
+version = "0.0.0"
+
+[project.scripts]
+systemd-boot-builder = "systemd_boot_builder:main"
