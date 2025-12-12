@@ -66,19 +66,20 @@ let
 
       inherit (pkgs) python3;
 
-      systemd = config.systemd.package;
-
-      bootspecTools = config.boot.bootspec.package;
-
-      nix = config.nix.package.out;
-
       inherit (config.system.nixos) distroName;
     };
   };
 
   finalSystemdBootBuilder = pkgs.writeScript "install-systemd-boot.sh" ''
     #!${pkgs.runtimeShell}
-    PATH="${lib.makeBinPath [ pkgs.util-linuxMinimal ]}:$PATH"
+    PATH="${
+      lib.makeBinPath [
+        pkgs.util-linuxMinimal
+        config.systemd.package
+        config.boot.bootspec.package
+        config.nix.package
+      ]
+    }:$PATH"
     ${systemdBootBuilder}/bin/systemd-boot ${builderCfg} "$@"
     ${cfg.extraInstallCommands}
   '';

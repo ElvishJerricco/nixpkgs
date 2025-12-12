@@ -16,10 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # These values will be replaced with actual values during the package build
-BOOTSPEC_TOOLS = "@bootspecTools@"
 DISTRO_NAME = "@distroName@"
-NIX = "@nix@"
-SYSTEMD = "@systemd@"
 
 
 @dataclass
@@ -164,7 +161,7 @@ def get_bootspec(profile: str | None, generation: int) -> BootSpec:
     else:
         boot_json_str = run(
             [
-                f"{BOOTSPEC_TOOLS}/bin/synthesize",
+                "synthesize",
                 "--version",
                 "1",
                 system_directory,
@@ -292,7 +289,7 @@ def write_entry(
 def get_generations(cfg: Config, profile: str | None = None) -> list[SystemIdentifier]:
     gen_list = run(
         [
-            f"{NIX}/bin/nix-env",
+            "nix-env",
             "--list-generations",
             "-p",
             "/nix/var/nix/profiles/%s"
@@ -394,18 +391,18 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
         cfg.loader_conf().unlink(missing_ok=True)
 
         run(
-            [f"{SYSTEMD}/bin/bootctl", f"--esp-path={cfg.efi_sys_mount_point}"]
+            ["bootctl", f"--esp-path={cfg.efi_sys_mount_point}"]
             + bootctl_flags
             + ["install"]
         )
     else:
         # Update bootloader to latest if needed
         available_out = run(
-            [f"{SYSTEMD}/bin/bootctl", "--version"], stdout=subprocess.PIPE
+            ["bootctl", "--version"], stdout=subprocess.PIPE
         ).stdout.split()[2]
         installed_out = run(
             [
-                f"{SYSTEMD}/bin/bootctl",
+                "bootctl",
                 f"--esp-path={cfg.efi_sys_mount_point}",
                 "status",
             ],
@@ -448,7 +445,7 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             run(
-                [f"{SYSTEMD}/bin/bootctl", f"--esp-path={cfg.efi_sys_mount_point}"]
+                ["bootctl", f"--esp-path={cfg.efi_sys_mount_point}"]
                 + bootctl_flags
                 + ["update"]
             )
