@@ -24,21 +24,19 @@ SYSTEMD = "@systemd@"
 
 @dataclass
 class Config:
-    efi_sys_mount_point: Path = Path("@efiSysMountPoint@")
-    boot_mount_point: Path = Path("@bootMountPoint@")
-    nixos_dir: Path = Path(
-        "@nixosDir@".strip("/")
-    )  # Path relative to the XBOOTLDR or ESP mount point
-    timeout: str = "@timeout@"
-    editor: bool = "@editor@" == "1"  # noqa: PLR0133
-    console_mode: str = "@consoleMode@"
-    configuration_limit: int = int("@configurationLimit@")
-    reboot_for_bitlocker: bool = bool("@rebootForBitlocker@")
-    can_touch_efi_variables: str = "@canTouchEfiVariables@"
-    graceful: str = "@graceful@"
-    copy_extra_files: str = "@copyExtraFiles@"
-    check_mountpoints: str = "@checkMountpoints@"
-    store_dir: str = "@storeDir@"
+    efi_sys_mount_point: Path
+    boot_mount_point: Path
+    nixos_dir: Path  # Path relative to the XBOOTLDR or ESP mount point
+    timeout: str
+    editor: bool
+    console_mode: str
+    configuration_limit: int
+    reboot_for_bitlocker: bool
+    can_touch_efi_variables: bool
+    graceful: bool
+    copy_extra_files: str
+    check_mountpoints: str
+    store_dir: str
 
     def loader_conf(self) -> Path:
         return (
@@ -384,10 +382,10 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
     if cfg.boot_mount_point != cfg.efi_sys_mount_point:
         bootctl_flags.append(f"--boot-path={cfg.boot_mount_point}")
 
-    if cfg.can_touch_efi_variables != "1":
+    if not cfg.can_touch_efi_variables:
         bootctl_flags.append("--no-variables")
 
-    if cfg.graceful == "1":
+    if cfg.graceful:
         bootctl_flags.append("--graceful")
 
     if os.getenv("NIXOS_INSTALL_BOOTLOADER") == "1":
@@ -521,11 +519,13 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    cfg = Config()
-    print(cfg, file=sys.stderr)
-
     parser = argparse.ArgumentParser(
         description=f"Update {DISTRO_NAME}-related systemd-boot files"
+    )
+    parser.add_argument(
+        "builder_config",
+        metavar="BUILDER-CONFIG",
+        help="The JSON config file to configure the builder",
     )
     parser.add_argument(
         "default_config",
@@ -533,6 +533,21 @@ def main() -> None:
         help=f"The default {DISTRO_NAME} config to boot",
     )
     args = parser.parse_args()
+
+    with Path(args.builder_config).open("r") as f:
+        builder_config_json = json.load(f)
+
+    builder_config_json["efi_sys_mount_point"] = Path(
+        builder_config_json["efi_sys_mount_point"]
+    )
+    builder_config_json["boot_mount_point"] = Path(
+        builder_config_json["boot_mount_point"]
+    )
+    builder_config_json["nixos_dir"] = Path(builder_config_json["nixos_dir"].strip("/"))
+
+    # TODO: This is not type-checking the arguments
+    cfg = Config(**builder_config_json)
+    print(cfg, file=sys.stderr)
 
     run([cfg.check_mountpoints])
 

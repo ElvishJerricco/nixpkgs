@@ -31,6 +31,45 @@ let
 
   edk2ShellEspPath = "efi/edk2-uefi-shell/shell.efi";
 
+  nixosDir = "/EFI/nixos";
+
+  boot_mount_point =
+    if cfg.xbootldrMountPoint != null then cfg.xbootldrMountPoint else efi.efiSysMountPoint;
+  builderCfg = pkgs.writeText "builder.json" (
+    builtins.toJSON {
+      store_dir = builtins.storeDir;
+      nixos_dir = nixosDir;
+      efi_sys_mount_point = efi.efiSysMountPoint;
+      inherit boot_mount_point;
+      timeout =
+        if config.boot.loader.timeout == null then "menu-force" else toString config.boot.loader.timeout;
+      editor = cfg.editor;
+      console_mode = cfg.consoleMode;
+      reboot_for_bitlocker = cfg.rebootForBitlocker;
+      graceful = cfg.graceful;
+      configuration_limit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
+      can_touch_efi_variables = efi.canTouchEfiVariables;
+      check_mountpoints = pkgs.writeShellScript "check-mountpoints" ''
+        fail() {
+          echo "$1 = '$2' is not a mounted partition. Is the path configured correctly?" >&2
+          exit 1
+        }
+        ${pkgs.util-linuxMinimal}/bin/findmnt ${efi.efiSysMountPoint} > /dev/null || fail efiSysMountPoint ${efi.efiSysMountPoint}
+        ${lib.optionalString (cfg.xbootldrMountPoint != null)
+          "${pkgs.util-linuxMinimal}/bin/findmnt ${cfg.xbootldrMountPoint} > /dev/null || fail xbootldrMountPoint ${cfg.xbootldrMountPoint}"
+        }
+      '';
+      copy_extra_files = pkgs.writeShellScript "copy-extra-files" ''
+        ${concatStrings (
+          mapAttrsToList (n: v: ''
+            ${pkgs.coreutils}/bin/install -Dp "${v}" "${boot_mount_point}/"${escapeShellArg n}
+            ${pkgs.coreutils}/bin/install -D /dev/null "${boot_mount_point}/${nixosDir}/.extra-files/"${escapeShellArg n}
+          '') cfg.extraFiles
+        )}
+      '';
+    }
+  );
+
   systemdBootBuilder = pkgs.replaceVarsWith {
     name = "systemd-boot";
 
@@ -40,8 +79,7 @@ let
 
     isExecutable = true;
 
-    replacements = rec {
-      inherit (builtins) storeDir;
+    replacements = {
 
       inherit (pkgs) python3;
 
@@ -51,51 +89,13 @@ let
 
       nix = config.nix.package.out;
 
-      timeout = if config.boot.loader.timeout == null then "menu-force" else config.boot.loader.timeout;
-
-      configurationLimit = if cfg.configurationLimit == null then 0 else cfg.configurationLimit;
-
-      inherit (cfg)
-        consoleMode
-        graceful
-        editor
-        rebootForBitlocker
-        ;
-
-      inherit (efi) efiSysMountPoint canTouchEfiVariables;
-
-      bootMountPoint =
-        if cfg.xbootldrMountPoint != null then cfg.xbootldrMountPoint else efi.efiSysMountPoint;
-
-      nixosDir = "/EFI/nixos";
-
       inherit (config.system.nixos) distroName;
-
-      checkMountpoints = pkgs.writeShellScript "check-mountpoints" ''
-        fail() {
-          echo "$1 = '$2' is not a mounted partition. Is the path configured correctly?" >&2
-          exit 1
-        }
-        ${pkgs.util-linuxMinimal}/bin/findmnt ${efiSysMountPoint} > /dev/null || fail efiSysMountPoint ${efiSysMountPoint}
-        ${lib.optionalString (cfg.xbootldrMountPoint != null)
-          "${pkgs.util-linuxMinimal}/bin/findmnt ${cfg.xbootldrMountPoint} > /dev/null || fail xbootldrMountPoint ${cfg.xbootldrMountPoint}"
-        }
-      '';
-
-      copyExtraFiles = pkgs.writeShellScript "copy-extra-files" ''
-        ${concatStrings (
-          mapAttrsToList (n: v: ''
-            ${pkgs.coreutils}/bin/install -Dp "${v}" "${bootMountPoint}/"${escapeShellArg n}
-            ${pkgs.coreutils}/bin/install -D /dev/null "${bootMountPoint}/${nixosDir}/.extra-files/"${escapeShellArg n}
-          '') cfg.extraFiles
-        )}
-      '';
     };
   };
 
   finalSystemdBootBuilder = pkgs.writeScript "install-systemd-boot.sh" ''
     #!${pkgs.runtimeShell}
-    ${systemdBootBuilder}/bin/systemd-boot "$@"
+    ${systemdBootBuilder}/bin/systemd-boot ${builderCfg} "$@"
     ${cfg.extraInstallCommands}
   '';
 in
