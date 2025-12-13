@@ -65,8 +65,6 @@ let
     replacements = {
 
       inherit (pkgs) python3;
-
-      inherit (config.system.nixos) distroName;
     };
   };
 
@@ -80,7 +78,7 @@ let
         config.nix.package
       ]
     }:$PATH"
-    ${systemdBootBuilder}/bin/systemd-boot ${builderCfg} "$@"
+    NIXOS_DISTRO_NAME=${config.system.nixos.distroName} ${systemdBootBuilder}/bin/systemd-boot ${builderCfg} "$@"
     ${cfg.extraInstallCommands}
   '';
 in

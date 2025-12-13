@@ -15,8 +15,7 @@ from typing import NamedTuple, Any, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-# These values will be replaced with actual values during the package build
-DISTRO_NAME = "@distroName@"
+DISTRO_NAME = os.getenv("NIXOS_DISTRO_NAME")
 
 
 @dataclass
