@@ -373,7 +373,7 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
         os.environ["NIXOS_INSTALL_BOOTLOADER"] = "1"
 
     # flags to pass to bootctl install/update
-    bootctl_flags = []
+    bootctl_flags = [f"--esp-path={cfg.efi_sys_mount_point}"]
 
     if cfg.boot_mount_point != cfg.efi_sys_mount_point:
         bootctl_flags.append(f"--boot-path={cfg.boot_mount_point}")
@@ -388,22 +388,14 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
         # bootctl uses fopen() with modes "wxe" and fails if the file exists.
         cfg.loader_conf().unlink(missing_ok=True)
 
-        run(
-            ["bootctl", f"--esp-path={cfg.efi_sys_mount_point}"]
-            + bootctl_flags
-            + ["install"]
-        )
+        run(["bootctl"] + bootctl_flags + ["install"])
     else:
         # Update bootloader to latest if needed
         available_out = run(
             ["bootctl", "--version"], stdout=subprocess.PIPE
         ).stdout.split()[2]
         installed_out = run(
-            [
-                "bootctl",
-                f"--esp-path={cfg.efi_sys_mount_point}",
-                "status",
-            ],
+            ["bootctl"] + bootctl_flags + ["status"],
             stdout=subprocess.PIPE,
         ).stdout
 
@@ -442,11 +434,7 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
                 % (installed_version, available_version),
                 file=sys.stderr,
             )
-            run(
-                ["bootctl", f"--esp-path={cfg.efi_sys_mount_point}"]
-                + bootctl_flags
-                + ["update"]
-            )
+            run(["bootctl"] + bootctl_flags + ["update"])
 
     (cfg.boot_mount_point / cfg.nixos_dir).mkdir(parents=True, exist_ok=True)
     (cfg.boot_mount_point / "loader/entries").mkdir(parents=True, exist_ok=True)
