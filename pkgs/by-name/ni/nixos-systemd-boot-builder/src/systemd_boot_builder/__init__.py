@@ -22,6 +22,7 @@ class Config:
     efi_sys_mount_point: Path
     boot_mount_point: Path
     nixos_dir: Path  # Path relative to the XBOOTLDR or ESP mount point
+    root: Path | None
     timeout: str
     editor: bool
     console_mode: str
@@ -33,9 +34,25 @@ class Config:
     store_dir: str
 
     def loader_conf(self) -> Path:
-        return (
-            self.efi_sys_mount_point / "loader/loader.conf"
-        )  # Always stored on the ESP
+        return self.efi_sys_path() / "loader/loader.conf"  # Always stored on the ESP
+
+    def efi_sys_path(self) -> Path:
+        if self.root is not None:
+            return self.root / self.efi_sys_mount_point.relative_to("/")
+        else:
+            return self.efi_sys_mount_point
+
+    def boot_path(self) -> Path:
+        if self.root is not None:
+            return self.root / self.boot_mount_point.relative_to("/")
+        else:
+            return self.boot_mount_point
+
+    def nix_profiles(self) -> Path:
+        if self.root is not None:
+            return self.root / "nix/var/nix/profiles"
+        else:
+            return Path("/nix/var/nix/profiles")
 
 
 @dataclass
@@ -82,19 +99,17 @@ def copy_if_not_exists(source: Path, dest: Path) -> None:
         copy_with_temp(source, dest)
 
 
-def generation_dir(profile: str | None, generation: int) -> Path:
+def generation_dir(cfg: Config, profile: str | None, generation: int) -> Path:
     if profile:
-        return Path(
-            f"/nix/var/nix/profiles/system-profiles/{profile}-{generation}-link"
-        )
+        return cfg.nix_profiles() / f"system-profiles/{profile}-{generation}-link"
     else:
-        return Path(f"/nix/var/nix/profiles/system-{generation}-link")
+        return cfg.nix_profiles() / f"system-{generation}-link"
 
 
 def system_dir(
-    profile: str | None, generation: int, specialisation: str | None
+    cfg: Config, profile: str | None, generation: int, specialisation: str | None
 ) -> Path:
-    d = generation_dir(profile, generation)
+    d = generation_dir(cfg, profile, generation)
     if specialisation:
         return d / "specialisation" / specialisation
     else:
@@ -143,8 +158,8 @@ def write_loader_conf(
     os.rename(tmp, cfg.loader_conf())
 
 
-def get_bootspec(profile: str | None, generation: int) -> BootSpec:
-    system_directory = system_dir(profile, generation, None)
+def get_bootspec(cfg: Config, profile: str | None, generation: int) -> BootSpec:
+    system_directory = system_dir(cfg, profile, generation, None)
     boot_json_path = (system_directory / "boot.json").resolve()
     if boot_json_path.is_file():
         with boot_json_path.open("r") as f:
@@ -204,7 +219,7 @@ def copy_from_file(cfg: Config, file: Path, dry_run: bool = False) -> Path:
         f"{suffix}.efi" if suffix == store_subdir else f"{store_subdir}-{suffix}.efi"
     )
     if not dry_run:
-        copy_if_not_exists(store_file_path, cfg.boot_mount_point / efi_file_path)
+        copy_if_not_exists(store_file_path, cfg.boot_path() / efi_file_path)
     return efi_file_path
 
 
@@ -235,7 +250,7 @@ def write_entry(
 
     try:
         if bootspec.initrdSecrets is not None:
-            run([bootspec.initrdSecrets, cfg.boot_mount_point / initrd])
+            run([bootspec.initrdSecrets, cfg.boot_path() / initrd])
     except subprocess.CalledProcessError:
         if current:
             print("failed to create initrd secrets!", file=sys.stderr)
@@ -252,7 +267,7 @@ def write_entry(
                 file=sys.stderr,
             )
     entry_file = (
-        cfg.boot_mount_point
+        cfg.boot_path()
         / "loader/entries"
         / generation_conf_filename(profile, generation, specialisation)
     )
@@ -260,7 +275,9 @@ def write_entry(
     kernel_params = "init=%s " % bootspec.init
 
     kernel_params = kernel_params + " ".join(bootspec.kernelParams)
-    build_time = int(system_dir(profile, generation, specialisation).stat().st_ctime)
+    build_time = int(
+        system_dir(cfg, profile, generation, specialisation).stat().st_ctime
+    )
     build_date = datetime.datetime.fromtimestamp(build_time).strftime("%F")
 
     with tmp_path.open("w") as f:
@@ -289,9 +306,11 @@ def get_generations(cfg: Config, profile: str | None = None) -> list[SystemIdent
         [
             "nix-env",
             "--list-generations",
+            "--store",
+            cfg.root if cfg.root is not None else "auto",
             "-p",
-            "/nix/var/nix/profiles/%s"
-            % ("system-profiles/" + profile if profile else "system"),
+            cfg.nix_profiles()
+            / ("system-profiles/" + profile if profile else "system"),
         ],
         stdout=subprocess.PIPE,
     ).stdout
@@ -315,12 +334,12 @@ def remove_old_entries(cfg: Config, gens: list[SystemIdentifier]) -> None:
     )
     known_paths = []
     for gen in gens:
-        bootspec = get_bootspec(gen.profile, gen.generation)
+        bootspec = get_bootspec(cfg, gen.profile, gen.generation)
         known_paths.append(copy_from_file(cfg, bootspec.kernel, True).name)
         known_paths.append(copy_from_file(cfg, bootspec.initrd, True).name)
         if bootspec.devicetree is not None:
             known_paths.append(copy_from_file(cfg, bootspec.devicetree, True).name)
-    for path in (cfg.boot_mount_point / "loader/entries").glob(
+    for path in (cfg.boot_path() / "loader/entries").glob(
         "nixos*-generation-[1-9]*.conf", case_sensitive=False
     ):
         if rex_profile.match(path.name):
@@ -333,21 +352,21 @@ def remove_old_entries(cfg: Config, gens: list[SystemIdentifier]) -> None:
             continue
         if (prof, gen_number, None) not in gens:
             path.unlink()
-    for path in (cfg.boot_mount_point / cfg.nixos_dir).iterdir():
+    for path in (cfg.boot_path() / cfg.nixos_dir).iterdir():
         if path.name not in known_paths and not path.is_dir():
             path.unlink()
 
 
 def cleanup_esp(cfg: Config) -> None:
-    for path in (cfg.efi_sys_mount_point / "loader/entries").glob("nixos*"):
+    for path in (cfg.efi_sys_path() / "loader/entries").glob("nixos*"):
         path.unlink()
-    nixos_dir = cfg.efi_sys_mount_point / cfg.nixos_dir
+    nixos_dir = cfg.efi_sys_path() / cfg.nixos_dir
     if nixos_dir.is_dir():
         shutil.rmtree(nixos_dir)
 
 
-def get_profiles() -> list[str]:
-    system_profiles = Path("/nix/var/nix/profiles/system-profiles/")
+def get_profiles(cfg: Config) -> list[str]:
+    system_profiles = cfg.nix_profiles() / "system-profiles"
     if system_profiles.is_dir():
         return [
             x.name for x in system_profiles.iterdir() if not x.name.endswith("-link")
@@ -374,6 +393,9 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
 
     # flags to pass to bootctl install/update
     bootctl_flags = [f"--esp-path={cfg.efi_sys_mount_point}"]
+
+    if cfg.root is not None:
+        bootctl_flags.append(f"--root={cfg.root}")
 
     if cfg.boot_mount_point != cfg.efi_sys_mount_point:
         bootctl_flags.append(f"--boot-path={cfg.boot_mount_point}")
@@ -436,18 +458,18 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
             )
             run(["bootctl"] + bootctl_flags + ["update"])
 
-    (cfg.boot_mount_point / cfg.nixos_dir).mkdir(parents=True, exist_ok=True)
-    (cfg.boot_mount_point / "loader/entries").mkdir(parents=True, exist_ok=True)
+    (cfg.boot_path() / cfg.nixos_dir).mkdir(parents=True, exist_ok=True)
+    (cfg.boot_path() / "loader/entries").mkdir(parents=True, exist_ok=True)
 
     gens = get_generations(cfg)
-    for profile in get_profiles():
+    for profile in get_profiles(cfg):
         gens += get_generations(cfg, profile)
 
     remove_old_entries(cfg, gens)
 
     for gen in gens:
         try:
-            bootspec = get_bootspec(gen.profile, gen.generation)
+            bootspec = get_bootspec(cfg, gen.profile, gen.generation)
             is_default = Path(bootspec.init).parent == Path(args.default_config)
             write_entry(cfg, *gen, machine_id, bootspec, current=is_default)
             for specialisation in bootspec.specialisations.keys():
@@ -483,10 +505,10 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
         # automatically, as we don't have information about the mount point anymore.
         cleanup_esp(cfg)
 
-    extra_files_dir = cfg.boot_mount_point / cfg.nixos_dir / ".extra-files"
+    extra_files_dir = cfg.boot_path() / cfg.nixos_dir / ".extra-files"
     for root, _, files in extra_files_dir.walk(top_down=False):
         relative_root = root.relative_to(extra_files_dir)
-        actual_root = cfg.boot_mount_point / relative_root
+        actual_root = cfg.boot_path() / relative_root
 
         for file in files:
             actual_file = actual_root / file
@@ -500,10 +522,8 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
     extra_files_dir.mkdir(parents=True, exist_ok=True)
 
     for extra_target, extra_source in cfg.extra_files.items():
-        boot_target = cfg.boot_mount_point / extra_target
-        hidden_target = (
-            cfg.boot_mount_point / cfg.nixos_dir / ".extra-files" / extra_target
-        )
+        boot_target = cfg.boot_path() / extra_target
+        hidden_target = cfg.boot_path() / cfg.nixos_dir / ".extra-files" / extra_target
 
         hidden_target.parent.mkdir(parents=True, exist_ok=True)
         hidden_target.write_bytes(b"")
@@ -518,21 +538,21 @@ def check_mountpoints(cfg: Config) -> None:
         return
 
     esp_check = subprocess.run(
-        ["findmnt", cfg.efi_sys_mount_point], check=False, stdout=subprocess.DEVNULL
+        ["findmnt", cfg.efi_sys_path()], check=False, stdout=subprocess.DEVNULL
     )
     if esp_check.returncode != 0:
         print(
-            f"efiSysMountPoint = '{cfg.efi_sys_mount_point}' is not a mounted partition. Is the path configured correctly?",
+            f"efiSysMountPoint = '{cfg.efi_sys_path()}' is not a mounted partition. Is the path configured correctly?",
             file=sys.stderr,
         )
         sys.exit(1)
 
     xbootldr_check = subprocess.run(
-        ["findmnt", cfg.boot_mount_point], check=False, stdout=subprocess.DEVNULL
+        ["findmnt", cfg.boot_path()], check=False, stdout=subprocess.DEVNULL
     )
     if xbootldr_check.returncode != 0:
         print(
-            f"xbootldrMountPoint = '{cfg.boot_mount_point}' is not a mounted partition. Is the path configured correctly?",
+            f"xbootldrMountPoint = '{cfg.boot_path()}' is not a mounted partition. Is the path configured correctly?",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -552,6 +572,12 @@ def main() -> None:
         metavar="DEFAULT-CONFIG",
         help=f"The default {DISTRO_NAME} config to boot",
     )
+    parser.add_argument(
+        "--root",
+        metavar="ROOT",
+        help="The root directory to operate on",
+        default=None,
+    )
     args = parser.parse_args()
 
     with Path(args.builder_config).open("r") as f:
@@ -564,6 +590,7 @@ def main() -> None:
         builder_config_json["boot_mount_point"]
     )
     builder_config_json["nixos_dir"] = Path(builder_config_json["nixos_dir"].strip("/"))
+    builder_config_json["root"] = Path(args.root) if args.root is not None else None
     builder_config_json["extra_files"] = {
         p.relative_to(p.anchor) if p.is_absolute() else p: Path(v)
         for k, v in builder_config_json["extra_files"].items()
@@ -582,17 +609,17 @@ def main() -> None:
         # it can leave the system in an unbootable state, when a crash/outage
         # happens shortly after an update. To decrease the likelihood of this
         # event sync the efi filesystem after each update.
-        rc = libc.syncfs(os.open(f"{cfg.boot_mount_point}", os.O_RDONLY))
+        rc = libc.syncfs(os.open(f"{cfg.boot_path()}", os.O_RDONLY))
         if rc != 0:
             print(
-                f"could not sync {cfg.boot_mount_point}: {os.strerror(rc)}",
+                f"could not sync {cfg.boot_path()}: {os.strerror(rc)}",
                 file=sys.stderr,
             )
 
         if cfg.boot_mount_point != cfg.efi_sys_mount_point:
-            rc = libc.syncfs(os.open(cfg.efi_sys_mount_point, os.O_RDONLY))
+            rc = libc.syncfs(os.open(cfg.efi_sys_path(), os.O_RDONLY))
             if rc != 0:
                 print(
-                    f"could not sync {cfg.efi_sys_mount_point}: {os.strerror(rc)}",
+                    f"could not sync {cfg.efi_sys_path()}: {os.strerror(rc)}",
                     file=sys.stderr,
                 )
