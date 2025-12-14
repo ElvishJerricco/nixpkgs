@@ -1,0 +1,16 @@
+diff --git a/src/shared/find-esp.c b/src/shared/find-esp.c
+index 77910ed9b4..d264269609 100644
+--- a/src/shared/find-esp.c
++++ b/src/shared/find-esp.c
+@@ -294,6 +294,11 @@ static int verify_fsroot_dir(
+ 
+         assert(S_ISDIR(sxa.stx_mode)); /* We used O_DIRECTORY above, when opening, so this must hold */
+ 
++        if (FLAGS_SET(flags, VERIFY_ESP_SKIP_FSTYPE_CHECK)) {
++                assert(FLAGS_SET(flags, VERIFY_ESP_SKIP_DEVICE_CHECK));
++                goto success;
++        }
++
+         if (FLAGS_SET(sxa.stx_attributes_mask, STATX_ATTR_MOUNT_ROOT)) {
+ 
+                 /* If we have STATX_ATTR_MOUNT_ROOT, we are happy, that's all we need. We operate under the

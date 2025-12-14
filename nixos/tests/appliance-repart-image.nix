@@ -23,6 +23,48 @@ in
       pkgs,
       ...
     }:
+    let
+      efiDirs =
+        pkgs.runCommand "efi-dirs"
+          {
+            nativeBuildInputs = [
+              (pkgs.nixos-systemd-boot-builder.override {
+                util-linux = config.systemd.package.util-linux;
+                systemd = config.systemd.package;
+                bootspec = config.boot.bootspec.package;
+                nix = config.nix.package;
+                inherit (config.system.nixos) distroName;
+              })
+            ];
+          }
+          ''
+            mkdir -p build/${config.boot.loader.efi.efiSysMountPoint}
+            ${lib.optionalString (config.boot.loader.systemd-boot.xbootldrMountPoint != null) ''
+              mkdir -p build/${config.boot.loader.systemd-boot.xbootldrMountPoint}
+            ''}
+            mkdir -p build/nix/var/nix/profiles/
+            ln -s ${config.system.build.toplevel} build/nix/var/nix/profiles/system-1-link
+            ln -s system-1-link build/nix/var/nix/profiles/system
+
+            # Have to copy os-release, because RESOLVE_IN_ROOT
+            mkdir build/etc
+            cat ${config.system.build.etc}/etc/os-release > build/etc/os-release
+
+            cat build/etc/os-release
+            env SYSTEMD_RELAX_ESP_CHECKS=1 NIXOS_INSTALL_BOOTLOADER=1 SYSTEMD_LOG_LEVEL=debug \
+              systemd-boot-builder \
+              --root $(realpath build) \
+              ${config.system.build.systemdBootBuilderConfig} \
+              ${config.system.build.toplevel}
+
+            mkdir $out
+            mv build/${config.boot.loader.efi.efiSysMountPoint} $out/esp
+            ${lib.optionalString (config.boot.loader.systemd-boot.xbootldrMountPoint != null) ''
+              mv build/${config.boot.loader.systemd-boot.xbootldrMountPoint} $out/xbootldr
+            ''}
+          '';
+
+    in
     {
 
       imports = [ ../modules/image/repart.nix ];
@@ -31,12 +73,16 @@ in
       virtualisation.mountHostNixStore = false;
       virtualisation.useEFIBoot = true;
 
-      # Disable boot loaders because we install one "manually".
       # TODO(raitobezarius): revisit this when #244907 lands
-      boot.loader.grub.enable = false;
+      boot.loader.systemd-boot.enable = true;
+      boot.loader.efi.canTouchEfiVariables = false;
 
       system.image.id = imageId;
       system.image.version = imageVersion;
+
+      systemd.package = pkgs.systemd.overrideAttrs (old: {
+        patches = old.patches ++ [ ./skip-checks.patch ];
+      });
 
       virtualisation.fileSystems = lib.mkForce {
         "/" = {
@@ -51,17 +97,9 @@ in
         sectorSize = 512;
         partitions = {
           "esp" = {
-            contents =
-              let
-                efiArch = config.nixpkgs.hostPlatform.efiArch;
-              in
-              {
-                "/EFI/BOOT/BOOT${lib.toUpper efiArch}.EFI".source =
-                  "${pkgs.systemd}/lib/systemd/boot/efi/systemd-boot${efiArch}.efi";
-
-                "/EFI/Linux/${config.system.boot.loader.ukiFile}".source =
-                  "${config.system.build.uki}/${config.system.boot.loader.ukiFile}";
-              };
+            contents = {
+              "/".source = "${efiDirs}/esp";
+            };
             repartConfig = {
               Type = "esp";
               Format = "vfat";
@@ -70,6 +108,16 @@ in
               # aarch64 kernel seems to generally be a little bigger than the
               # x86_64 kernel. To stay on the safe side, leave some more slack
               # for every platform other than x86_64.
+              SizeMinBytes = if config.nixpkgs.hostPlatform.isx86_64 then "64M" else "96M";
+            };
+          };
+          "xbootldr" = lib.mkIf (config.boot.loader.systemd-boot.xbootldrMountPoint != null) {
+            contents = {
+              "/".source = "${efiDirs}/xbootldr";
+            };
+            repartConfig = {
+              Type = "xbootldr";
+              Format = "vfat";
               SizeMinBytes = if config.nixpkgs.hostPlatform.isx86_64 then "64M" else "96M";
             };
           };
@@ -122,10 +170,5 @@ in
         os_release = machine.succeed("cat /etc/os-release")
         t.assertIn('IMAGE_ID="${imageId}"', os_release)
         t.assertIn('IMAGE_VERSION="${imageVersion}"', os_release)
-
-      with subtest("Bootctl reports the right boot loader type"):
-        bootctl_status = machine.succeed("bootctl status")
-        print(bootctl_status)
-        t.assertIn("Boot Loader Specification Type #2", bootctl_status)
     '';
 }

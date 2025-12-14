@@ -577,6 +577,7 @@ in
 
     system = {
       build.installBootLoader = finalSystemdBootBuilder;
+      build.systemdBootBuilderConfig = builderCfg;
 
       boot.loader.id = "systemd-boot";
 
