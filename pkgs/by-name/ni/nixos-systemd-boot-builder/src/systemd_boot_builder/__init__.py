@@ -514,6 +514,9 @@ def install_bootloader(cfg: Config, args: argparse.Namespace) -> None:
 
 
 def check_mountpoints(cfg: Config) -> None:
+    if os.getenv("SYSTEMD_RELAX_ESP_CHECKS") == "1":
+        return
+
     esp_check = subprocess.run(
         ["findmnt", cfg.efi_sys_mount_point], check=False, stdout=subprocess.DEVNULL
     )
