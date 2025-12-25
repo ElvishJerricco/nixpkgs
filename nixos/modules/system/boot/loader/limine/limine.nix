@@ -398,14 +398,20 @@ in
 
       system = {
         boot.loader.id = "limine";
-        build.installBootLoader = pkgs.replaceVarsWith {
-          src = ./limine-install.py;
-          isExecutable = true;
-          replacements = {
-            python3 = pkgs.python3.withPackages (python-packages: [ python-packages.psutil ]);
-            configPath = limineInstallConfig;
-          };
-        };
+        build.installBootLoader =
+          let
+            replaced = pkgs.replaceVarsWith {
+              src = ./limine-install.py;
+              isExecutable = true;
+              replacements = {
+                python3 = pkgs.python3.withPackages (python-packages: [ python-packages.psutil ]);
+              };
+            };
+          in
+          pkgs.writeShellScript "limine-install" ''
+            # Currently the script doesn't take the system config argument
+            exec ${replaced} ${limineInstallConfig}
+          '';
       };
     })
     (lib.mkIf (cfg.enable && cfg.secureBoot.enable) {

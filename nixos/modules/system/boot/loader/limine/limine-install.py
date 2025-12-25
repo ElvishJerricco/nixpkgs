@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import argparse
 import datetime
 import hashlib
 import json
@@ -41,7 +42,7 @@ class BootSpec:
     initrdSecrets: str | None = None
 
 
-install_config = json.load(open("@configPath@", "r"))
+install_config = None
 libc = CDLL("libc.so.6")
 
 limine_install_dir: Optional[str] = None
@@ -50,6 +51,7 @@ paths: Dict[str, bool] = {}
 
 
 def config(*path: str) -> Optional[Any]:
+    assert install_config is not None
     result = install_config
     for component in path:
         result = result[component]
@@ -793,6 +795,16 @@ def install_bootloader() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=f"Update limine files")
+    parser.add_argument(
+        "builder_config",
+        metavar="BUILDER-CONFIG",
+        help="The JSON config file to configure the builder",
+    )
+    args = parser.parse_args()
+    with open(args.builder_config, "r") as f:
+        global install_config
+        install_config = json.load(f)
     try:
         install_bootloader()
     finally:
