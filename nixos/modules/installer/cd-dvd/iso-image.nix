@@ -51,7 +51,7 @@ let
       };
     in
     ''
-      ${lib.optionalString cfg.isoImage.showConfiguration (menuBuilderGrub2 menuConfig)}
+      ${menuBuilderGrub2 menuConfig}
       ${lib.concatStringsSep "\n" (
         lib.mapAttrsToList (
           specName:
@@ -150,15 +150,13 @@ let
       params ? [ ],
     }:
     ''
-      ${lib.optionalString cfg.isoImage.showConfiguration ''
-        LABEL ${label}
-        MENU LABEL ${cfg.isoImage.prependToMenuLabel}${cfg.system.nixos.distroName} ${cfg.system.nixos.label}${cfg.isoImage.appendToMenuLabel}${
-          lib.optionalString (cfg.isoImage.configurationName != null) (" " + cfg.isoImage.configurationName)
-        }
-        LINUX /boot/${cfg.boot.kernelPackages.kernel + "/" + cfg.system.boot.loader.kernelFile}
-        APPEND init=${cfg.system.build.toplevel}/init ${toString cfg.boot.kernelParams} ${toString params}
-        INITRD /boot/${cfg.system.build.initialRamdisk + "/" + cfg.system.boot.loader.initrdFile}
-      ''}
+      LABEL ${label}
+      MENU LABEL ${cfg.isoImage.prependToMenuLabel}${cfg.system.nixos.distroName} ${cfg.system.nixos.label}${cfg.isoImage.appendToMenuLabel}${
+        lib.optionalString (cfg.isoImage.configurationName != null) (" " + cfg.isoImage.configurationName)
+      }
+      LINUX /boot/${cfg.boot.kernelPackages.kernel + "/" + cfg.system.boot.loader.kernelFile}
+      APPEND init=${cfg.system.build.toplevel}/init ${toString cfg.boot.kernelParams} ${toString params}
+      INITRD /boot/${cfg.system.build.initialRamdisk + "/" + cfg.system.boot.loader.initrdFile}
 
       ${lib.concatStringsSep "\n\n" (
         lib.mapAttrsToList (
@@ -759,10 +757,6 @@ in
       '';
     };
 
-    isoImage.showConfiguration = lib.mkEnableOption "show this configuration in the menu" // {
-      default = true;
-    };
-
     isoImage.forceTextMode = lib.mkOption {
       default = false;
       type = lib.types.bool;
@@ -955,7 +949,7 @@ in
       let
         cfgFiles =
           cfg:
-          lib.optionals cfg.isoImage.showConfiguration [
+          [
             {
               source = cfg.boot.kernelPackages.kernel + "/" + cfg.system.boot.loader.kernelFile;
               target = "/boot/" + cfg.boot.kernelPackages.kernel + "/" + cfg.system.boot.loader.kernelFile;

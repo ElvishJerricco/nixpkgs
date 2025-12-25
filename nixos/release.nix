@@ -104,6 +104,7 @@ let
       (import lib/eval-config.nix {
         inherit system;
         modules = makeModules module { };
+        extraModules = makeModules { } { };
       }).config.system.build.isoImage
     );
 
