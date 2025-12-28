@@ -18,10 +18,11 @@ python3Packages.buildPythonApplication {
   propagatedBuildInputs = [
     (python3Packages.psutil)
     (python3Packages.types-psutil)
+    (python3Packages.pydantic)
   ];
 
   nativeCheckInputs = with python3Packages; [
-    # mypy
+    mypy
     ruff
   ];
 
@@ -30,8 +31,7 @@ python3Packages.buildPythonApplication {
 
   checkPhase = ''
     runHook preCheck
-    # TODO: Fix
-    # mypy limine_install --strict
+    mypy limine_install --strict
     ruff check limine_install
     ruff format --check --diff limine_install
     runHook postCheck

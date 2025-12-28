@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from pydantic.dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Optional
 
 import argparse
 import datetime
@@ -14,6 +14,91 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+
+
+@dataclass
+class FileSystem:
+    fsType: str
+    device: str
+
+
+@dataclass
+class SecureBoot:
+    enable: bool
+    sbctl: str
+    createAndEnrollKeys: bool
+
+
+@dataclass
+class Font:
+    scale: str | None
+    spacing: int | None
+
+
+@dataclass
+class GraphicalTerminal:
+    background: str | None
+    brightBackground: str | None
+    brightForeground: str | None
+    brightPalette: str | None
+    font: Font
+    foreground: str | None
+    margin: int | None
+    marginGradient: int | None
+    palette: str | None
+
+
+@dataclass
+class Interface:
+    branding: str | None
+    brandingColor: int | None
+    helpHidden: bool
+    resolution: str | None
+
+
+@dataclass
+class Style:
+    backdrop: str | None
+    graphicalTerminal: GraphicalTerminal
+    interface: Interface
+    wallpaperStyle: Literal["centered", "stretched", "tiled"]
+    wallpapers: List[str]
+
+
+@dataclass
+class Architecture:
+    arch: str
+    bits: int
+    family: str
+
+
+@dataclass
+class Config:
+    nixPath: str
+    efiBootMgrPath: str
+    liminePath: str
+    efiMountPoint: str
+    fileSystems: dict[str, FileSystem]
+    luksDevices: list[str]
+    canTouchEfiVariables: bool
+    efiSupport: bool
+    efiRemovable: bool
+    secureBoot: SecureBoot
+    biosSupport: bool
+    biosDevice: str
+    partitionIndex: int | None
+    force: bool
+    enrollConfig: bool
+    style: Style
+    maxGenerations: int
+    hostArchitecture: Architecture
+    timeout: int
+    enableEditor: bool
+    extraConfig: str
+    extraEntries: str
+    additionalFiles: dict[str, str]
+    validateChecksums: bool
+    panicOnChecksumMismatch: bool
 
 
 @dataclass
@@ -40,20 +125,12 @@ class BootSpec:
     initrdSecrets: str | None = None
 
 
-install_config = None
+config: Config | None = None
 libc = CDLL("libc.so.6")
 
 limine_install_dir: Optional[str] = None
 can_use_direct_paths = False
 paths: Dict[str, bool] = {}
-
-
-def config(*path: str) -> Optional[Any]:
-    assert install_config is not None
-    result = install_config
-    for component in path:
-        result = result[component]
-    return result
 
 
 def bool_to_yes_no(value: bool) -> str:
@@ -84,7 +161,9 @@ def get_profiles() -> List[str]:
 
 
 def get_gens(profile: str = "system") -> List[int]:
-    nix_env = os.path.join(str(config("nixPath")), "bin", "nix-env")
+    assert config is not None
+
+    nix_env = os.path.join(config.nixPath, "bin", "nix-env")
     output = subprocess.check_output(
         [
             nix_env,
@@ -101,11 +180,13 @@ def get_gens(profile: str = "system") -> List[int]:
     gen_lines = output.splitlines()
     gen_nums = [int(line.split()[0]) for line in gen_lines]
 
-    return [gen for gen in gen_nums][-config("maxGenerations") :]
+    return [gen for gen in gen_nums][-config.maxGenerations :]
 
 
 def is_encrypted(device: str) -> bool:
-    for name in config("luksDevices"):
+    assert config is not None
+
+    for name in config.luksDevices:
         if os.readlink(os.path.join("/dev/mapper", name)) == os.readlink(device):
             return True
 
@@ -128,6 +209,8 @@ def get_dest_path(path: str, target: str) -> str:
 
 
 def get_copied_path_uri(path: str, target: str) -> str:
+    assert config is not None
+
     result = ""
 
     dest_file = get_dest_file(path)
@@ -141,7 +224,7 @@ def get_copied_path_uri(path: str, target: str) -> str:
     path_with_prefix = os.path.join("/limine", target, dest_file)
     result = f"boot():{path_with_prefix}"
 
-    if config("validateChecksums"):
+    if config.validateChecksums:
         with open(path, "rb") as file:
             b2sum = hashlib.blake2b()
             b2sum.update(file.read())
@@ -334,6 +417,8 @@ def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
 
 
 def generate_config_entry(profile: str, gen: int, special: bool) -> str:
+    assert config is not None
+
     time = datetime.datetime.fromtimestamp(
         os.stat(get_system_path(profile, gen), follow_symlinks=False).st_mtime
     ).strftime("%F %H:%M:%S")
@@ -349,7 +434,7 @@ def generate_config_entry(profile: str, gen: int, special: bool) -> str:
     # Xen, if configured, should be listed first for each generation
     if boot_spec.xen is not None:
         xen_version = boot_spec.xen.version
-        if config("efiSupport"):
+        if config.efiSupport:
             entry += xen_config_entry(2, boot_spec, xen_version, gen, time, True)
         entry += xen_config_entry(2, boot_spec, xen_version, gen, time, False)
 
@@ -404,30 +489,31 @@ def copy_file(from_path: str, to_path: str) -> None:
     paths[to_path] = True
 
 
-def option_from_config(name: str, config_path: List[str]) -> str:
-    value = config(*config_path)
+def option_from_config(name: str, value: int | str | bool | None) -> str:
     if value is None:
         return ""
     if isinstance(value, bool):
         value = bool_to_yes_no(value)
-    return f"{name}: {config(*config_path)}\n"
+    return f"{name}: {value}\n"
 
 
 def install_bootloader() -> None:
+    assert config is not None
+
     global limine_install_dir
 
     boot_fs = None
 
-    for mount_point, fs in config("fileSystems").items():
+    for mount_point, fs in config.fileSystems.items():
         if mount_point == "/boot":
             boot_fs = fs
 
-    if config("efiSupport"):
-        limine_install_dir = os.path.join(str(config("efiMountPoint")), "limine")
+    if config.efiSupport:
+        limine_install_dir = os.path.join(config.efiMountPoint, "limine")
     elif (
         boot_fs
-        and is_fs_type_supported(boot_fs["fsType"])
-        and not is_encrypted(boot_fs["device"])
+        and is_fs_type_supported(boot_fs.fsType)
+        and not is_encrypted(boot_fs.device)
     ):
         limine_install_dir = "/boot/limine"
     else:
@@ -435,8 +521,8 @@ def install_bootloader() -> None:
         if not boot_fs:
             possible_causes.append("/limine on the boot partition (not present)")
         else:
-            is_boot_fs_type_ok = is_fs_type_supported(boot_fs["fsType"])
-            is_boot_fs_encrypted = is_encrypted(boot_fs["device"])
+            is_boot_fs_type_ok = is_fs_type_supported(boot_fs.fsType)
+            is_boot_fs_encrypted = is_encrypted(boot_fs.device)
             possible_causes.append(
                 f"/limine on the boot partition ({is_boot_fs_type_ok=} {is_boot_fs_encrypted=})"
             )
@@ -456,8 +542,8 @@ def install_bootloader() -> None:
         )
 
     if (
-        config("secureBoot", "enable")
-        and not config("secureBoot", "createAndEnrollKeys")
+        config.secureBoot.enable
+        and not config.secureBoot.createAndEnrollKeys
         and not os.path.exists("/var/lib/sbctl")
     ):
         print("There are no sbctl secure boot keys present. Please generate some.")
@@ -482,9 +568,9 @@ def install_bootloader() -> None:
     for profile in get_profiles():
         profiles += [(profile, get_gens(profile))]
 
-    timeout = config("timeout")
-    editor_enabled = bool_to_yes_no(config("enableEditor"))
-    hash_mismatch_panic = bool_to_yes_no(config("panicOnChecksumMismatch"))
+    timeout = config.timeout
+    editor_enabled = bool_to_yes_no(config.enableEditor)
+    hash_mismatch_panic = bool_to_yes_no(config.panicOnChecksumMismatch)
 
     last_gen = get_gens()[-1]
     last_gen_json = json.load(
@@ -492,7 +578,7 @@ def install_bootloader() -> None:
     )
     last_gen_boot_spec = bootjson_to_bootspec(last_gen_json)
 
-    config_file = str(config("extraConfig")) + "\n"
+    config_file = config.extraConfig + "\n"
     config_file += textwrap.dedent(f"""
         timeout: {timeout}
         editor_enabled: {editor_enabled}
@@ -501,55 +587,55 @@ def install_bootloader() -> None:
         default_entry: {3 if len(last_gen_boot_spec.specialisations.items()) > 0 else 2}
     """)
 
-    for wallpaper in config("style", "wallpapers"):
+    for wallpaper in config.style.wallpapers:
         config_file += (
             f"""wallpaper: {get_copied_path_uri(wallpaper, "wallpapers")}\n"""
         )
 
-    config_file += option_from_config("wallpaper_style", ["style", "wallpaperStyle"])
-    config_file += option_from_config("backdrop", ["style", "backdrop"])
+    config_file += option_from_config("wallpaper_style", config.style.wallpaperStyle)
+    config_file += option_from_config("backdrop", config.style.backdrop)
 
     config_file += option_from_config(
-        "interface_resolution", ["style", "interface", "resolution"]
+        "interface_resolution", config.style.interface.resolution
     )
     config_file += option_from_config(
-        "interface_branding", ["style", "interface", "branding"]
+        "interface_branding", config.style.interface.branding
     )
     config_file += option_from_config(
-        "interface_branding_colour", ["style", "interface", "brandingColor"]
+        "interface_branding_colour", config.style.interface.brandingColor
     )
     config_file += option_from_config(
-        "interface_help_hidden", ["style", "interface", "helpHidden"]
+        "interface_help_hidden", config.style.interface.helpHidden
     )
     config_file += option_from_config(
-        "term_font_scale", ["style", "graphicalTerminal", "font", "scale"]
+        "term_font_scale", config.style.graphicalTerminal.font.scale
     )
     config_file += option_from_config(
-        "term_font_spacing", ["style", "graphicalTerminal", "font", "spacing"]
+        "term_font_spacing", config.style.graphicalTerminal.font.spacing
     )
     config_file += option_from_config(
-        "term_palette", ["style", "graphicalTerminal", "palette"]
+        "term_palette", config.style.graphicalTerminal.palette
     )
     config_file += option_from_config(
-        "term_palette_bright", ["style", "graphicalTerminal", "brightPalette"]
+        "term_palette_bright", config.style.graphicalTerminal.brightPalette
     )
     config_file += option_from_config(
-        "term_foreground", ["style", "graphicalTerminal", "foreground"]
+        "term_foreground", config.style.graphicalTerminal.foreground
     )
     config_file += option_from_config(
-        "term_background", ["style", "graphicalTerminal", "background"]
+        "term_background", config.style.graphicalTerminal.background
     )
     config_file += option_from_config(
-        "term_foreground_bright", ["style", "graphicalTerminal", "brightForeground"]
+        "term_foreground_bright", config.style.graphicalTerminal.brightForeground
     )
     config_file += option_from_config(
-        "term_background_bright", ["style", "graphicalTerminal", "brightBackground"]
+        "term_background_bright", config.style.graphicalTerminal.brightBackground
     )
     config_file += option_from_config(
-        "term_margin", ["style", "graphicalTerminal", "margin"]
+        "term_margin", config.style.graphicalTerminal.margin
     )
     config_file += option_from_config(
-        "term_margin_gradient", ["style", "graphicalTerminal", "marginGradient"]
+        "term_margin_gradient", config.style.graphicalTerminal.marginGradient
     )
 
     config_file += textwrap.dedent("""
@@ -571,7 +657,7 @@ def install_bootloader() -> None:
     config_file_path = os.path.join(limine_install_dir, "limine.conf")
     config_file += "\n# NixOS boot entries end here\n\n"
 
-    config_file += str(config("extraEntries"))
+    config_file += config.extraEntries
 
     with open(f"{config_file_path}.tmp", "w") as f:
         f.truncate()
@@ -582,44 +668,42 @@ def install_bootloader() -> None:
 
     paths[config_file_path] = True
 
-    for dest_path, source_path in config("additionalFiles").items():
+    for dest_path, source_path in config.additionalFiles.items():
         dest_path = os.path.join(limine_install_dir, dest_path)
 
         copy_file(source_path, dest_path)
 
-    limine_binary = os.path.join(str(config("liminePath")), "bin", "limine")
-    cpu_family = config("hostArchitecture", "family")
-    if config("efiSupport"):
+    limine_binary = os.path.join(config.liminePath, "bin", "limine")
+    cpu_family = config.hostArchitecture.family
+    if config.efiSupport:
         boot_file = ""
         if cpu_family == "x86":
-            if config("hostArchitecture", "bits") == 32:
+            if config.hostArchitecture.bits == 32:
                 boot_file = "BOOTIA32.EFI"
-            elif config("hostArchitecture", "bits") == 64:
+            elif config.hostArchitecture.bits == 64:
                 boot_file = "BOOTX64.EFI"
         elif cpu_family == "arm":
             if (
-                config("hostArchitecture", "arch") == "armv8-a"
-                and config("hostArchitecture", "bits") == 64
+                config.hostArchitecture.arch == "armv8-a"
+                and config.hostArchitecture.bits == 64
             ):
                 boot_file = "BOOTAA64.EFI"
             else:
-                raise Exception(
-                    f"Unsupported CPU arch: {config('hostArchitecture', 'arch')}"
-                )
+                raise Exception(f"Unsupported CPU arch: {config.hostArchitecture.arch}")
         else:
             raise Exception(f"Unsupported CPU family: {cpu_family}")
 
-        efi_path = os.path.join(str(config("liminePath")), "share", "limine", boot_file)
+        efi_path = os.path.join(config.liminePath, "share", "limine", boot_file)
         dest_path = os.path.join(
-            str(config("efiMountPoint")),
+            config.efiMountPoint,
             "efi",
-            "boot" if config("efiRemovable") else "limine",
+            "boot" if config.efiRemovable else "limine",
             boot_file,
         )
 
         copy_file(efi_path, dest_path)
 
-        if config("enrollConfig"):
+        if config.enrollConfig:
             b2sum = hashlib.blake2b()
             b2sum.update(config_file.strip().encode())
             try:
@@ -630,9 +714,9 @@ def install_bootloader() -> None:
                 print("error: failed to enroll limine config.", file=sys.stderr)
                 sys.exit(1)
 
-        if config("secureBoot", "enable"):
-            sbctl = os.path.join(str(config("secureBoot", "sbctl")), "bin", "sbctl")
-            if config("secureBoot", "createAndEnrollKeys"):
+        if config.secureBoot.enable:
+            sbctl = os.path.join(config.secureBoot.sbctl, "bin", "sbctl")
+            if config.secureBoot.createAndEnrollKeys:
                 print("TEST MODE: creating and enrolling keys")
                 try:
                     subprocess.run([sbctl, "create-keys"])
@@ -654,21 +738,19 @@ def install_bootloader() -> None:
                 print("error: failed to sign limine", file=sys.stderr)
                 sys.exit(1)
 
-        if not config("efiRemovable") and not config("canTouchEfiVariables"):
+        if not config.efiRemovable and not config.canTouchEfiVariables:
             print(
                 "warning: boot.loader.efi.canTouchEfiVariables is set to false while boot.loader.limine.efiInstallAsRemovable.\n  This may render the system unbootable."
             )
 
-        if config("canTouchEfiVariables"):
-            if config("efiRemovable"):
+        if config.canTouchEfiVariables:
+            if config.efiRemovable:
                 print(
                     "note: boot.loader.limine.efiInstallAsRemovable is true, no need to add EFI entry."
                 )
             else:
-                efibootmgr = os.path.join(
-                    str(config("efiBootMgrPath")), "bin", "efibootmgr"
-                )
-                efi_partition = find_mounted_device(str(config("efiMountPoint")))
+                efibootmgr = os.path.join(config.efiBootMgrPath, "bin", "efibootmgr")
+                efi_partition = find_mounted_device(config.efiMountPoint)
                 efi_disk = find_disk_device(efi_partition)
 
                 efibootmgr_output = subprocess.check_output(
@@ -737,18 +819,18 @@ def install_bootloader() -> None:
                         universal_newlines=True,
                     )
 
-    if config("biosSupport"):
+    if config.biosSupport:
         if cpu_family != "x86":
             raise Exception(f"Unsupported CPU family for BIOS install: {cpu_family}")
 
         limine_sys = os.path.join(
-            str(config("liminePath")), "share", "limine", "limine-bios.sys"
+            config.liminePath, "share", "limine", "limine-bios.sys"
         )
         limine_sys_dest = os.path.join(limine_install_dir, "limine-bios.sys")
 
         copy_file(limine_sys, limine_sys_dest)
 
-        device = str(config("biosDevice"))
+        device = config.biosDevice
 
         if device == "nodev":
             print(
@@ -759,10 +841,10 @@ def install_bootloader() -> None:
 
         limine_deploy_args: List[str] = [limine_binary, "bios-install", device]
 
-        if config("partitionIndex"):
-            limine_deploy_args.append(str(config("partitionIndex")))
+        if config.partitionIndex:
+            limine_deploy_args.append(str(config.partitionIndex))
 
-        if config("force"):
+        if config.force:
             limine_deploy_args.append("--force")
 
         try:
@@ -788,8 +870,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     with open(args.builder_config, "r") as f:
-        global install_config
-        install_config = json.load(f)
+        global config
+        config = Config(**json.load(f))
     try:
         install_bootloader()
     finally:
@@ -797,9 +879,9 @@ def main() -> None:
         # it can leave the system in an unbootable state, when a crash/outage
         # happens shortly after an update. To decrease the likelihood of this
         # event sync the efi filesystem after each update.
-        rc = libc.syncfs(os.open(f"{str(config('efiMountPoint'))}", os.O_RDONLY))
+        rc = libc.syncfs(os.open(f"{config.efiMountPoint}", os.O_RDONLY))
         if rc != 0:
             print(
-                f"could not sync {str(config('efiMountPoint'))}: {os.strerror(rc)}",
+                f"could not sync {config.efiMountPoint}: {os.strerror(rc)}",
                 file=sys.stderr,
             )
