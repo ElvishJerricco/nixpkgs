@@ -1,5 +1,3 @@
-#!@python3@/bin/python3 -B
-
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -818,7 +816,3 @@ def main() -> None:
                 f"could not sync {str(config('efiMountPoint'))}: {os.strerror(rc)}",
                 file=sys.stderr,
             )
-
-
-if __name__ == "__main__":
-    main()
