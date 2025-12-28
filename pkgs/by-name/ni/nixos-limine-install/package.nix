@@ -17,6 +17,7 @@ python3Packages.buildPythonApplication {
 
   propagatedBuildInputs = [
     (python3Packages.psutil)
+    (python3Packages.types-psutil)
   ];
 
   nativeCheckInputs = with python3Packages; [
