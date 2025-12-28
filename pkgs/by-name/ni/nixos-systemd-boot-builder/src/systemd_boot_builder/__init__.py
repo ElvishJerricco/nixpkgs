@@ -11,8 +11,8 @@ import tempfile
 import warnings
 import json
 from typing import NamedTuple, Any, Sequence
-from dataclasses import dataclass
 from pathlib import Path
+from pydantic.dataclasses import dataclass
 
 DISTRO_NAME = os.getenv("NIXOS_DISTRO_NAME")
 
@@ -579,7 +579,6 @@ def main() -> None:
         if (p := Path(k))
     }
 
-    # TODO: This is not type-checking the arguments
     cfg = Config(**builder_config_json)
     print(cfg, file=sys.stderr)
 

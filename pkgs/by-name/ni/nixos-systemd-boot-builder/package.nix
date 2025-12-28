@@ -25,6 +25,7 @@ python3Packages.buildPythonApplication {
     (lib.getBin systemd)
     (lib.getBin bootspec)
     (lib.getBin nix)
+    (python3Packages.pydantic)
   ];
 
   makeWrapperArgs = [ "--set NIXOS_DISTRO_NAME ${distroName}" ];
