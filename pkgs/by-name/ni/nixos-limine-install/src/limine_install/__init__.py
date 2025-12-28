@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import argparse
 import datetime
@@ -313,7 +313,7 @@ def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
         + "\n"
     )
     if bootspec.initrd:
-        entry += f"module_path: " + get_kernel_uri(bootspec.initrd) + "\n"
+        entry += "module_path: " + get_kernel_uri(bootspec.initrd) + "\n"
 
     if bootspec.initrdSecrets:
         base_path = str(limine_install_dir) + "/kernels/"
@@ -334,7 +334,7 @@ def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
                 file=sys.stderr,
             )
             print(
-                f"note: if this is an older generation there is nothing to worry about"
+                "note: if this is an older generation there is nothing to worry about"
             )
 
         if os.path.exists(initrd_secrets_path_temp):
@@ -374,7 +374,7 @@ def generate_config_entry(profile: str, gen: str, special: bool) -> str:
             entry += "+"
 
         entry += f"Generation {gen}" + "\n"
-        entry += config_entry(depth, boot_spec, f"Default", str(time))
+        entry += config_entry(depth, boot_spec, "Default", str(time))
     else:
         entry += config_entry(depth, boot_spec, f"Generation {gen}", str(time))
 
@@ -446,7 +446,7 @@ def install_bootloader() -> None:
     else:
         possible_causes = []
         if not boot_fs:
-            possible_causes.append(f"/limine on the boot partition (not present)")
+            possible_causes.append("/limine on the boot partition (not present)")
         else:
             is_boot_fs_type_ok = is_fs_type_supported(boot_fs["fsType"])
             is_boot_fs_encrypted = is_encrypted(boot_fs["device"])
@@ -639,7 +639,7 @@ def install_bootloader() -> None:
                 subprocess.run(
                     [limine_binary, "enroll-config", dest_path, b2sum.hexdigest()]
                 )
-            except:
+            except BaseException:
                 print("error: failed to enroll limine config.", file=sys.stderr)
                 sys.exit(1)
 
@@ -649,21 +649,21 @@ def install_bootloader() -> None:
                 print("TEST MODE: creating and enrolling keys")
                 try:
                     subprocess.run([sbctl, "create-keys"])
-                except:
+                except BaseException:
                     print("error: failed to create keys", file=sys.stderr)
                     sys.exit(1)
                 try:
                     subprocess.run(
                         [sbctl, "enroll-keys", "--yes-this-might-brick-my-machine"]
                     )
-                except:
+                except BaseException:
                     print("error: failed to enroll keys", file=sys.stderr)
                     sys.exit(1)
 
             print("signing limine...")
             try:
                 subprocess.run([sbctl, "sign", dest_path])
-            except:
+            except BaseException:
                 print("error: failed to sign limine", file=sys.stderr)
                 sys.exit(1)
 
@@ -780,7 +780,7 @@ def install_bootloader() -> None:
 
         try:
             subprocess.run(limine_deploy_args)
-        except:
+        except BaseException:
             raise Exception(
                 "Failed to deploy BIOS stage 1 Limine bootloader!\n"
                 + "You might want to try enabling the `boot.loader.limine.force` option."
@@ -793,7 +793,7 @@ def install_bootloader() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=f"Update limine files")
+    parser = argparse.ArgumentParser(description="Update limine files")
     parser.add_argument(
         "builder_config",
         metavar="BUILDER-CONFIG",

@@ -31,7 +31,7 @@ python3Packages.buildPythonApplication {
     runHook preCheck
     # TODO: Fix
     # mypy limine_install --strict
-    # ruff check limine_install
+    ruff check limine_install
     ruff format --check --diff limine_install
     runHook postCheck
   '';
