@@ -7,6 +7,7 @@ import hashlib
 import json
 from ctypes import CDLL
 import os
+from pathlib import Path
 import psutil
 import re
 import shutil
@@ -25,7 +26,7 @@ class FileSystem:
 @dataclass
 class SecureBoot:
     enable: bool
-    sbctl: str
+    sbctl: Path
     createAndEnrollKeys: bool
 
 
@@ -62,7 +63,7 @@ class Style:
     graphicalTerminal: GraphicalTerminal
     interface: Interface
     wallpaperStyle: Literal["centered", "stretched", "tiled"]
-    wallpapers: List[str]
+    wallpapers: List[Path]
 
 
 @dataclass
@@ -74,11 +75,11 @@ class Architecture:
 
 @dataclass
 class Config:
-    nixPath: str
-    efiBootMgrPath: str
-    liminePath: str
-    efiMountPoint: str
-    fileSystems: dict[str, FileSystem]
+    nixPath: Path
+    efiBootMgrPath: Path
+    liminePath: Path
+    efiMountPoint: Path
+    fileSystems: dict[Path, FileSystem]
     luksDevices: list[str]
     canTouchEfiVariables: bool
     efiSupport: bool
@@ -96,7 +97,7 @@ class Config:
     enableEditor: bool
     extraConfig: str
     extraEntries: str
-    additionalFiles: dict[str, str]
+    additionalFiles: dict[Path, Path]
     validateChecksums: bool
     panicOnChecksumMismatch: bool
 
@@ -105,8 +106,8 @@ class Config:
 class XenBootSpec:
     """Represent the bootspec extension for Xen dom0 kernels"""
 
-    efiPath: str
-    multibootPath: str
+    efiPath: Path
+    multibootPath: Path | None
     params: List[str]
     version: str
 
@@ -114,23 +115,24 @@ class XenBootSpec:
 @dataclass
 class BootSpec:
     system: str
-    init: str
-    kernel: str
+    init: Path
+    kernel: Path
     kernelParams: List[str]
     label: str
-    toplevel: str
+    toplevel: Path
     specialisations: Dict[str, "BootSpec"]
     xen: XenBootSpec | None
-    initrd: str | None = None
-    initrdSecrets: str | None = None
+    initrd: Path | None = None
+    initrdSecrets: Path | None = None
 
 
 config: Config | None = None
 libc = CDLL("libc.so.6")
 
-limine_install_dir: Optional[str] = None
+boot_dir: Optional[Path] = None
+limine_install_dir: Optional[Path] = None
 can_use_direct_paths = False
-paths: Dict[str, bool] = {}
+paths: Dict[Path, bool] = {}
 
 
 def bool_to_yes_no(value: bool) -> str:
@@ -139,31 +141,31 @@ def bool_to_yes_no(value: bool) -> str:
 
 def get_system_path(
     profile: str = "system", gen: Optional[int] = None, spec: Optional[str] = None
-) -> str:
+) -> Path:
     basename = f"{profile}-{gen}-link" if gen is not None else profile
-    profiles_dir = "/nix/var/nix/profiles"
+    profiles_dir = Path("/nix/var/nix/profiles")
     if profile == "system":
-        result = os.path.join(profiles_dir, basename)
+        result = profiles_dir / basename
     else:
-        result = os.path.join(profiles_dir, "system-profiles", basename)
+        result = profiles_dir / "system-profiles" / basename
 
     if spec is not None:
-        result = os.path.join(result, "specialisation", spec)
+        result = result / "specialisation" / spec
 
     return result
 
 
 def get_profiles() -> List[str]:
-    profiles_dir = "/nix/var/nix/profiles/system-profiles/"
-    dirs = os.listdir(profiles_dir) if os.path.isdir(profiles_dir) else []
+    profiles_dir = Path("/nix/var/nix/profiles/system-profiles/")
+    dirs = profiles_dir.iterdir() if profiles_dir.is_dir() else []
 
-    return [path for path in dirs if not path.endswith("-link")]
+    return [path.name for path in dirs if not path.name.endswith("-link")]
 
 
 def get_gens(profile: str = "system") -> List[int]:
     assert config is not None
 
-    nix_env = os.path.join(config.nixPath, "bin", "nix-env")
+    nix_env = config.nixPath / "bin/nix-env"
     output = subprocess.check_output(
         [
             nix_env,
@@ -187,7 +189,7 @@ def is_encrypted(device: str) -> bool:
     assert config is not None
 
     for name in config.luksDevices:
-        if os.readlink(os.path.join("/dev/mapper", name)) == os.readlink(device):
+        if (Path("/dev/mapper") / name).samefile(device):
             return True
 
     return False
@@ -197,32 +199,30 @@ def is_fs_type_supported(fs_type: str) -> bool:
     return fs_type.startswith("vfat")
 
 
-def get_dest_file(path: str) -> str:
-    package_id = os.path.basename(os.path.dirname(path))
-    suffix = os.path.basename(path)
-    return f"{package_id}-{suffix}"
+def get_dest_path(path: Path, target: Path) -> Path:
+    assert limine_install_dir is not None
+    assert not target.is_absolute()
+
+    dest_file = f"{path.parent.name}-{path.name}"
+    return limine_install_dir / target / dest_file
 
 
-def get_dest_path(path: str, target: str) -> str:
-    dest_file = get_dest_file(path)
-    return os.path.join(str(limine_install_dir), target, dest_file)
-
-
-def get_copied_path_uri(path: str, target: str) -> str:
+def get_copied_path_uri(path: Path, target: Path) -> str:
     assert config is not None
+    assert boot_dir is not None
+    assert not target.is_absolute()
 
     result = ""
 
-    dest_file = get_dest_file(path)
     dest_path = get_dest_path(path, target)
 
-    if not os.path.exists(dest_path):
+    if not dest_path.exists():
         copy_file(path, dest_path)
     else:
         paths[dest_path] = True
 
-    path_with_prefix = os.path.join("/limine", target, dest_file)
-    result = f"boot():{path_with_prefix}"
+    path_in_boot = "/" / dest_path.relative_to(boot_dir)
+    result = f"boot():{path_in_boot}"
 
     if config.validateChecksums:
         with open(path, "rb") as file:
@@ -234,8 +234,8 @@ def get_copied_path_uri(path: str, target: str) -> str:
     return result
 
 
-def get_kernel_uri(kernel_path: str) -> str:
-    return get_copied_path_uri(kernel_path, "kernels")
+def get_kernel_uri(kernel_path: Path) -> str:
+    return get_copied_path_uri(kernel_path, Path("kernels"))
 
 
 def bootjson_to_bootspec(bootjson: dict[str, Any]) -> BootSpec:
@@ -265,14 +265,15 @@ def generate_xen_efi_files(bootspec: BootSpec, gen: int) -> str:
     """
     assert bootspec.xen is not None
 
-    xen_efi_boot_path = get_copied_path_uri(bootspec.xen.efiPath, f"xen/{gen}")
-    xen_efi_path = get_dest_path(bootspec.xen.efiPath, f"xen/{gen}")
+    gen_target = Path(f"xen/{gen}")
 
-    xen_efi_cfg_dir = os.path.dirname(xen_efi_path)
-    xen_efi_cfg_path = xen_efi_path[:-4] + ".cfg"
+    xen_efi_boot_path = get_copied_path_uri(bootspec.xen.efiPath, gen_target)
+    xen_efi_path = get_dest_path(bootspec.xen.efiPath, gen_target)
 
-    if not os.path.exists(xen_efi_cfg_dir):
-        os.makedirs(xen_efi_cfg_dir)
+    xen_efi_cfg_dir = xen_efi_path.parent
+    xen_efi_cfg_path = xen_efi_path.with_suffix(".cfg")
+
+    xen_efi_cfg_dir.mkdir(parents=True, exist_ok=True)
 
     xen_efi_cfg = f"default=nixos{gen}\n\n" + f"[nixos{gen}]\n"
     # set xen dom0 parameters
@@ -280,23 +281,23 @@ def generate_xen_efi_files(bootspec: BootSpec, gen: int) -> str:
         xen_efi_cfg += "options=" + " ".join(bootspec.xen.params).strip() + "\n"
 
     # set kernel and copy in-place
-    xen_efi_kernel_path = get_dest_path(bootspec.kernel, f"xen/{gen}")
+    xen_efi_kernel_path = get_dest_path(bootspec.kernel, gen_target)
     copy_file(bootspec.kernel, xen_efi_kernel_path)
     xen_efi_cfg += (
         "kernel="
-        + os.path.basename(xen_efi_kernel_path)
+        + xen_efi_kernel_path.name
         + " "
-        + " ".join(["init=" + bootspec.init] + bootspec.kernelParams).strip()
+        + " ".join(["init=" + str(bootspec.init)] + bootspec.kernelParams).strip()
         + "\n"
     )
 
     # set ramdisk and copy initrd in-place
-    if bootspec.initrd:
-        xen_efi_initrd_path = get_dest_path(bootspec.initrd, f"xen/{gen}")
+    if bootspec.initrd is not None:
+        xen_efi_initrd_path = get_dest_path(bootspec.initrd, gen_target)
         copy_file(bootspec.initrd, xen_efi_initrd_path)
-        xen_efi_cfg += "ramdisk=" + os.path.basename(xen_efi_initrd_path) + "\n"
+        xen_efi_cfg += "ramdisk=" + xen_efi_initrd_path.name + "\n"
 
-    with open(xen_efi_cfg_path, "w") as xen_efi_cfg_file:
+    with xen_efi_cfg_path.open("w") as xen_efi_cfg_file:
         xen_efi_cfg_file.write(xen_efi_cfg)
 
     return xen_efi_boot_path
@@ -326,8 +327,8 @@ def xen_config_entry(
     # load Xen dom0 as the executable, using multiboot for EFI & BIOS
     if (
         efi
-        and len(bootspec.xen.multibootPath) > 0
-        and os.path.exists(bootspec.xen.multibootPath)
+        and bootspec.xen.multibootPath is not None
+        and bootspec.xen.multibootPath.exists()
     ):
         # Use the EFI protocol and generate Xen EFI configuration
         # files and directories which are loaded by Xen's EFI binary
@@ -339,16 +340,14 @@ def xen_config_entry(
         # Upstream Limine issue #482
         entry += "protocol: efi\n"
         entry += "path: " + generate_xen_efi_files(bootspec, gen) + "\n"
-    elif len(bootspec.xen.multibootPath) > 0 and os.path.exists(
-        bootspec.xen.multibootPath
-    ):
+    elif bootspec.xen.multibootPath is not None and bootspec.xen.multibootPath.exists():
         # Use multiboot1 if not generating an EFI entry, as multiboot2
         # doesn't work under Limine for booting Xen.
         # Upstream Limine issue #483
         entry += "protocol: multiboot\n"
         entry += (
             "path: "
-            + get_copied_path_uri(bootspec.xen.multibootPath, f"xen/{gen}")
+            + get_copied_path_uri(bootspec.xen.multibootPath, Path(f"xen/{gen}"))
             + "\n"
         )
         # set params as the multiboot executable's parameters
@@ -363,42 +362,39 @@ def xen_config_entry(
         # --- to work around first argument being ignored
         entry += (
             "module_string: -- "
-            + " ".join(["init=" + bootspec.init] + bootspec.kernelParams).strip()
+            + " ".join(["init=" + str(bootspec.init)] + bootspec.kernelParams).strip()
             + "\n"
         )
-        if bootspec.initrd:
+        if bootspec.initrd is not None:
             # the final module is the initrd
             entry += "module_path: " + get_kernel_uri(bootspec.initrd) + "\n"
     return entry
 
 
 def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
+    assert limine_install_dir is not None
+
     entry = "/" * levels + label + "\n"
     entry += "protocol: linux\n"
     entry += f"comment: {bootspec.label}, built on {time}\n"
     entry += "kernel_path: " + get_kernel_uri(bootspec.kernel) + "\n"
     entry += (
         "cmdline: "
-        + " ".join(["init=" + bootspec.init] + bootspec.kernelParams).strip()
+        + " ".join(["init=" + str(bootspec.init)] + bootspec.kernelParams).strip()
         + "\n"
     )
-    if bootspec.initrd:
+    if bootspec.initrd is not None:
         entry += "module_path: " + get_kernel_uri(bootspec.initrd) + "\n"
 
-    if bootspec.initrdSecrets:
-        base_path = str(limine_install_dir) + "/kernels/"
-        initrd_secrets_path = (
-            base_path + os.path.basename(bootspec.toplevel) + "-secrets"
-        )
-        if not os.path.exists(base_path):
-            os.makedirs(base_path)
+    if bootspec.initrdSecrets is not None:
+        base_path = limine_install_dir / "kernels"
+        initrd_secrets_path = base_path / f"{bootspec.toplevel.name}-secrets"
+        base_path.mkdir(parents=True, exist_ok=True)
 
         old_umask = os.umask(0o137)
-        initrd_secrets_path_temp = tempfile.mktemp(
-            os.path.basename(bootspec.toplevel) + "-secrets"
-        )
+        initrd_secrets_path_temp = tempfile.mktemp(bootspec.toplevel.name + "-secrets")
 
-        if os.system(bootspec.initrdSecrets + " " + initrd_secrets_path_temp) != 0:
+        if os.system(str(bootspec.initrdSecrets) + " " + initrd_secrets_path_temp) != 0:
             print(
                 f'warning: failed to create initrd secrets for "{label}"',
                 file=sys.stderr,
@@ -408,7 +404,7 @@ def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
             )
 
         if os.path.exists(initrd_secrets_path_temp):
-            copy_file(initrd_secrets_path_temp, initrd_secrets_path)
+            copy_file(Path(initrd_secrets_path_temp), initrd_secrets_path)
             os.unlink(initrd_secrets_path_temp)
             entry += "module_path: " + get_kernel_uri(initrd_secrets_path) + "\n"
 
@@ -420,11 +416,9 @@ def generate_config_entry(profile: str, gen: int, special: bool) -> str:
     assert config is not None
 
     time = datetime.datetime.fromtimestamp(
-        os.stat(get_system_path(profile, gen), follow_symlinks=False).st_mtime
+        get_system_path(profile, gen).stat(follow_symlinks=False).st_mtime
     ).strftime("%F %H:%M:%S")
-    boot_json = json.load(
-        open(os.path.join(get_system_path(profile, gen), "boot.json"), "r")
-    )
+    boot_json = json.load((get_system_path(profile, gen) / "boot.json").open("r"))
     boot_spec = bootjson_to_bootspec(boot_json)
 
     specialisation_list = boot_spec.specialisations.items()
@@ -456,35 +450,33 @@ def generate_config_entry(profile: str, gen: int, special: bool) -> str:
     return entry
 
 
-def find_disk_device(part: str) -> str:
-    part = os.path.realpath(part)
-    part = part.removeprefix("/dev/")
-    disk = os.path.realpath(os.path.join("/sys", "class", "block", part))
-    disk = os.path.dirname(disk)
+def find_disk_device(part: Path) -> Path:
+    part = part.resolve()
+    part = part.relative_to("/dev")
+    part = ("/sys/class/block" / part).resolve()
+    disk = part.parent
 
-    return os.path.join("/dev", os.path.basename(disk))
+    return Path("/dev") / disk.name
 
 
-def find_mounted_device(path: str) -> str:
-    path = os.path.abspath(path)
+def find_mounted_device(path: Path) -> Path:
+    path = path.absolute()
 
-    while not os.path.ismount(path):
-        path = os.path.dirname(path)
+    while not path.is_mount():
+        path = path.parent
 
-    devices = [x for x in psutil.disk_partitions() if x.mountpoint == path]
+    devices = [x for x in psutil.disk_partitions() if x.mountpoint == str(path)]
 
     assert len(devices) == 1
-    return devices[0].device
+    return Path(devices[0].device)
 
 
-def copy_file(from_path: str, to_path: str) -> None:
-    dirname = os.path.dirname(to_path)
+def copy_file(from_path: Path, to_path: Path) -> None:
+    to_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-
-    shutil.copyfile(from_path, to_path + ".tmp")
-    os.rename(to_path + ".tmp", to_path)
+    tmp_path = to_path.with_name(to_path.name + ".tmp")
+    shutil.copyfile(from_path, tmp_path)
+    os.rename(tmp_path, to_path)
 
     paths[to_path] = True
 
@@ -501,21 +493,22 @@ def install_bootloader() -> None:
     assert config is not None
 
     global limine_install_dir
+    global boot_dir
 
     boot_fs = None
 
     for mount_point, fs in config.fileSystems.items():
-        if mount_point == "/boot":
+        if str(mount_point) == "/boot":
             boot_fs = fs
 
     if config.efiSupport:
-        limine_install_dir = os.path.join(config.efiMountPoint, "limine")
+        boot_dir = config.efiMountPoint
     elif (
         boot_fs
         and is_fs_type_supported(boot_fs.fsType)
         and not is_encrypted(boot_fs.device)
     ):
-        limine_install_dir = "/boot/limine"
+        boot_dir = Path("/boot")
     else:
         possible_causes = []
         if not boot_fs:
@@ -541,27 +534,29 @@ def install_bootloader() -> None:
         """)
         )
 
+    limine_install_dir = boot_dir / "limine"
+
     if (
         config.secureBoot.enable
         and not config.secureBoot.createAndEnrollKeys
-        and not os.path.exists("/var/lib/sbctl")
+        and not Path("/var/lib/sbctl").exists()
     ):
         print("There are no sbctl secure boot keys present. Please generate some.")
         sys.exit(1)
 
-    if not os.path.exists(limine_install_dir):
-        os.makedirs(limine_install_dir)
+    if not limine_install_dir.exists():
+        limine_install_dir.mkdir(parents=True, exist_ok=True)
     else:
-        for dir, dirs, files in os.walk(limine_install_dir, topdown=True):
+        for dir, dirs, files in limine_install_dir.walk():
             for file in files:
-                paths[os.path.join(dir, file)] = False
+                paths[dir / file] = False
 
-    limine_xen_dir = os.path.join(limine_install_dir, "xen")
-    if os.path.exists(limine_xen_dir):
+    limine_xen_dir = limine_install_dir / "xen"
+    if limine_xen_dir.exists():
         print(f"cleaning {limine_xen_dir}")
         shutil.rmtree(limine_xen_dir)
 
-    os.makedirs(limine_xen_dir)
+    limine_xen_dir.mkdir(parents=True)
 
     profiles = [("system", get_gens())]
 
@@ -574,7 +569,7 @@ def install_bootloader() -> None:
 
     last_gen = get_gens()[-1]
     last_gen_json = json.load(
-        open(os.path.join(get_system_path("system", last_gen), "boot.json"), "r")
+        (get_system_path("system", last_gen) / "boot.json").open("r")
     )
     last_gen_boot_spec = bootjson_to_bootspec(last_gen_json)
 
@@ -589,7 +584,7 @@ def install_bootloader() -> None:
 
     for wallpaper in config.style.wallpapers:
         config_file += (
-            f"""wallpaper: {get_copied_path_uri(wallpaper, "wallpapers")}\n"""
+            f"""wallpaper: {get_copied_path_uri(wallpaper, Path("wallpapers"))}\n"""
         )
 
     config_file += option_from_config("wallpaper_style", config.style.wallpaperStyle)
@@ -654,26 +649,28 @@ def install_bootloader() -> None:
             config_file += generate_config_entry(profile, gen, isFirst)
             isFirst = False
 
-    config_file_path = os.path.join(limine_install_dir, "limine.conf")
+    config_file_path = limine_install_dir / "limine.conf"
     config_file += "\n# NixOS boot entries end here\n\n"
 
     config_file += config.extraEntries
 
-    with open(f"{config_file_path}.tmp", "w") as f:
+    config_file_path_temp = config_file_path.with_name(config_file_path.name + ".tmp")
+    with config_file_path_temp.open("w") as f:
         f.truncate()
         f.write(config_file.strip())
         f.flush()
         os.fsync(f.fileno())
-    os.rename(f"{config_file_path}.tmp", config_file_path)
+    config_file_path_temp.rename(config_file_path)
 
     paths[config_file_path] = True
 
     for dest_path, source_path in config.additionalFiles.items():
-        dest_path = os.path.join(limine_install_dir, dest_path)
+        assert not dest_path.is_absolute()
+        dest_path = limine_install_dir / dest_path
 
         copy_file(source_path, dest_path)
 
-    limine_binary = os.path.join(config.liminePath, "bin", "limine")
+    limine_binary = config.liminePath / "bin/limine"
     cpu_family = config.hostArchitecture.family
     if config.efiSupport:
         boot_file = ""
@@ -693,12 +690,12 @@ def install_bootloader() -> None:
         else:
             raise Exception(f"Unsupported CPU family: {cpu_family}")
 
-        efi_path = os.path.join(config.liminePath, "share", "limine", boot_file)
-        dest_path = os.path.join(
-            config.efiMountPoint,
-            "efi",
-            "boot" if config.efiRemovable else "limine",
-            boot_file,
+        efi_path = config.liminePath / "share/limine" / boot_file
+        dest_path = (
+            config.efiMountPoint
+            / "efi"
+            / ("boot" if config.efiRemovable else "limine")
+            / boot_file
         )
 
         copy_file(efi_path, dest_path)
@@ -715,7 +712,7 @@ def install_bootloader() -> None:
                 sys.exit(1)
 
         if config.secureBoot.enable:
-            sbctl = os.path.join(config.secureBoot.sbctl, "bin", "sbctl")
+            sbctl = config.secureBoot.sbctl / "bin/sbctl"
             if config.secureBoot.createAndEnrollKeys:
                 print("TEST MODE: creating and enrolling keys")
                 try:
@@ -749,9 +746,12 @@ def install_bootloader() -> None:
                     "note: boot.loader.limine.efiInstallAsRemovable is true, no need to add EFI entry."
                 )
             else:
-                efibootmgr = os.path.join(config.efiBootMgrPath, "bin", "efibootmgr")
+                efibootmgr = config.efiBootMgrPath / "bin/efibootmgr"
                 efi_partition = find_mounted_device(config.efiMountPoint)
                 efi_disk = find_disk_device(efi_partition)
+                efi_partition_num = efi_partition.name.removeprefix(
+                    efi_disk.name
+                ).removeprefix("p")
 
                 efibootmgr_output = subprocess.check_output(
                     [efibootmgr], stderr=subprocess.STDOUT, universal_newlines=True
@@ -790,7 +790,7 @@ def install_bootloader() -> None:
                             "-d",
                             efi_disk,
                             "-p",
-                            efi_partition.removeprefix(efi_disk).removeprefix("p"),
+                            efi_partition_num,
                             "-l",
                             f"\\efi\\limine\\{boot_file}",
                             "-L",
@@ -809,7 +809,7 @@ def install_bootloader() -> None:
                             "-d",
                             efi_disk,
                             "-p",
-                            efi_partition.removeprefix(efi_disk).removeprefix("p"),
+                            efi_partition_num,
                             "-l",
                             f"\\efi\\limine\\{boot_file}",
                             "-L",
@@ -823,10 +823,8 @@ def install_bootloader() -> None:
         if cpu_family != "x86":
             raise Exception(f"Unsupported CPU family for BIOS install: {cpu_family}")
 
-        limine_sys = os.path.join(
-            config.liminePath, "share", "limine", "limine-bios.sys"
-        )
-        limine_sys_dest = os.path.join(limine_install_dir, "limine-bios.sys")
+        limine_sys = config.liminePath / "share/limine/limine-bios.sys"
+        limine_sys_dest = limine_install_dir / "limine-bios.sys"
 
         copy_file(limine_sys, limine_sys_dest)
 
@@ -839,7 +837,7 @@ def install_bootloader() -> None:
             )
             return
 
-        limine_deploy_args: List[str] = [limine_binary, "bios-install", device]
+        limine_deploy_args: List[str] = [str(limine_binary), "bios-install", device]
 
         if config.partitionIndex:
             limine_deploy_args.append(str(config.partitionIndex))
@@ -857,8 +855,8 @@ def install_bootloader() -> None:
 
     print("removing unused boot files...")
     for path in paths:
-        if not paths[path] and os.path.exists(path):
-            os.remove(path)
+        if not paths[path] and path.exists():
+            path.unlink()
 
 
 def main() -> None:
