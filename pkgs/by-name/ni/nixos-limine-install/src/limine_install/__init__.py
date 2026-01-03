@@ -391,10 +391,13 @@ def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
         initrd_secrets_path = base_path / f"{bootspec.toplevel.name}-secrets"
         base_path.mkdir(parents=True, exist_ok=True)
 
-        old_umask = os.umask(0o137)
-        initrd_secrets_path_temp = tempfile.mktemp(bootspec.toplevel.name + "-secrets")
-
-        if os.system(str(bootspec.initrdSecrets) + " " + initrd_secrets_path_temp) != 0:
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=initrd_secrets_path.parent,
+            prefix=initrd_secrets_path.name,
+            suffix=".tmp.",
+        )
+        if os.system(str(bootspec.initrdSecrets) + " " + tmp_path) != 0:
+            Path(tmp_path).unlink()
             print(
                 f'warning: failed to create initrd secrets for "{label}"',
                 file=sys.stderr,
@@ -403,12 +406,11 @@ def config_entry(levels: int, bootspec: BootSpec, label: str, time: str) -> str:
                 "note: if this is an older generation there is nothing to worry about"
             )
 
-        if os.path.exists(initrd_secrets_path_temp):
-            copy_file(Path(initrd_secrets_path_temp), initrd_secrets_path)
-            os.unlink(initrd_secrets_path_temp)
+        if Path(tmp_path).exists():
+            os.fsync(tmp_fd)
+            shutil.move(tmp_path, initrd_secrets_path)
             entry += "module_path: " + get_kernel_uri(initrd_secrets_path) + "\n"
 
-        os.umask(old_umask)
     return entry
 
 
@@ -474,9 +476,12 @@ def find_mounted_device(path: Path) -> Path:
 def copy_file(from_path: Path, to_path: Path) -> None:
     to_path.parent.mkdir(parents=True, exist_ok=True)
 
-    tmp_path = to_path.with_name(to_path.name + ".tmp")
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        dir=to_path.parent, prefix=to_path.name, suffix=".tmp."
+    )
     shutil.copyfile(from_path, tmp_path)
-    os.rename(tmp_path, to_path)
+    os.fsync(tmp_fd)
+    shutil.move(tmp_path, to_path)
 
     paths[to_path] = True
 
@@ -654,13 +659,15 @@ def install_bootloader() -> None:
 
     config_file += config.extraEntries
 
-    config_file_path_temp = config_file_path.with_name(config_file_path.name + ".tmp")
-    with config_file_path_temp.open("w") as f:
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        dir=config_file_path.parent, prefix=config_file_path.name, suffix=".tmp."
+    )
+    with os.fdopen(tmp_fd, "w") as f:
         f.truncate()
         f.write(config_file.strip())
         f.flush()
         os.fsync(f.fileno())
-    config_file_path_temp.rename(config_file_path)
+    Path(tmp_path).rename(config_file_path)
 
     paths[config_file_path] = True
 
