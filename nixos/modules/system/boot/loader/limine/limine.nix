@@ -34,6 +34,7 @@ let
       additionalFiles = cfg.additionalFiles;
       validateChecksums = cfg.validateChecksums;
       panicOnChecksumMismatch = cfg.panicOnChecksumMismatch;
+      noBootFS = cfg.noBootFS;
     }
   );
   defaultWallpaper = pkgs.nixos-artwork.wallpapers.simple-dark-gray-bootloader.gnomeFilePath;
@@ -365,6 +366,16 @@ in
             The thickness in pixels for the margin around the terminal.
           '';
         };
+      };
+
+      noBootFS = lib.mkEnableOption "" // {
+        description = ''
+          Support for not having a boot file system configured. Limine
+          will be installed in `/boot` regardless of whether that
+          directory is a file system. As a result, no Limine stage 1
+          will be installed; that will have to be done manually some
+          other way.
+        '';
       };
     };
   };

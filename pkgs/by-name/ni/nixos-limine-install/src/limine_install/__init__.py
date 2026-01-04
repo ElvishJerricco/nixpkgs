@@ -100,6 +100,7 @@ class Config:
     additionalFiles: dict[Path, Path]
     validateChecksums: bool
     panicOnChecksumMismatch: bool
+    noBootFS: bool
 
 
 @dataclass
@@ -508,7 +509,7 @@ def install_bootloader() -> None:
 
     if config.efiSupport:
         boot_dir = config.efiMountPoint
-    elif (
+    elif config.noBootFS or (
         boot_fs
         and is_fs_type_supported(boot_fs.fsType)
         and not is_encrypted(boot_fs.device)
