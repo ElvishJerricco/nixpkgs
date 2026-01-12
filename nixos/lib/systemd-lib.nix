@@ -384,6 +384,7 @@ rec {
         allowSubstitutes = false;
       }
       ''
+        ${lib.optionalString cfg.unitGenerator.debug "START_TIME=$(date +%s%3N)"}
         mkdir -p $out
 
         # Copy the upstream systemd units we're interested in.
@@ -536,6 +537,12 @@ rec {
           ln -s ${cfg.ctrlAltDelUnit} $out/ctrl-alt-del.target
 
           ln -s ../remote-fs.target $out/multi-user.target.wants/
+        ''}
+
+        ${lib.optionalString cfg.unitGenerator.debug ''        
+          END_TIME=$(date +%s%3N)
+          ELAPSED=$((END_TIME - START_TIME))
+          echo "Built ${type}-units in ''${ELAPSED}ms" >&2
         ''}
       ''; # */
 

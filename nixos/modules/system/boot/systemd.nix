@@ -235,6 +235,22 @@ in
 
     package = mkPackageOption pkgs "systemd" { };
 
+    unitGenerator = {
+      debug = mkEnableOption "" // {
+        default = false;
+        description = ''
+          Whether to enable debug output for the Go-based systemd unit generator.
+          
+          When enabled, the Go unit generator will output detailed information about
+          what it's doing, which can help diagnose issues or differences between the
+          bash and Go implementations.
+          
+          This is useful when reporting issues about differences between the
+          bash and Go implementations.
+        '';
+      };
+    };
+
     enableStrictShellChecks = mkEnableOption "" // {
       description = ''
         Whether to run `shellcheck` on the generated scripts for systemd
