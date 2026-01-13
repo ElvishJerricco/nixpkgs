@@ -388,12 +388,7 @@ rec {
           fn=${package}/example/systemd/${typeDir}/$i
           if ! [ -e $fn ]; then echo "missing $fn"; false; fi
           if [ -L $fn ]; then
-            target="$(readlink "$fn")"
-            if [ ''${target:0:3} = ../ ]; then
-              ln -s "$(readlink -f "$fn")" $out/
-            else
-              cp -pd $fn $out/
-            fi
+            cp -pd $fn $out/
           else
             ln -s $fn $out/
           fi
