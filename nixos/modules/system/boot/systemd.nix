@@ -164,7 +164,7 @@ let
     "systemd-creds@.service"
     "systemd-creds.socket"
   ]
-  ++ lib.optional cfg.package.withTpm2Units [
+  ++ lib.optionals cfg.package.withTpm2Units [
     "systemd-pcrlock@.service"
     "systemd-pcrlock.socket"
   ]

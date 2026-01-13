@@ -8,7 +8,6 @@
 let
   inherit (lib)
     all
-    attrByPath
     attrNames
     concatLists
     concatMap
@@ -377,160 +376,45 @@ rec {
           nspawn = "nspawn";
         }
         .${type};
+
+      jsonConfig = pkgs.writeText "unit-collector.json" (
+        builtins.toJSON (
+          {
+            systemd_package = "${cfg.package}";
+            type_dir = typeDir;
+            upstream_units = upstreamUnits;
+            upstream_wants = upstreamWants;
+            packages = map toString packages;
+            allow_collisions = allowCollisions;
+            autodetect_units = mapAttrsToList (n: v: v.unit) (
+              filterAttrs (n: v: (v.overrideStrategy or "asDropinIfExists") == "asDropinIfExists") units
+            );
+            dropin_units = mapAttrsToList (n: v: v.unit) (
+              filterAttrs (n: v: (v.overrideStrategy or "asDropinIfExists") == "asDropin") units
+            );
+            unit_aliases = mapAttrs (n: v: v.aliases) units;
+            units_wanted_by = mapAttrs (n: v: v.wantedBy) units;
+            units_upheld_by = mapAttrs (n: v: v.upheldBy) units;
+            units_required_by = mapAttrs (n: v: v.requiredBy) units;
+          }
+          // lib.optionalAttrs (typeDir == "system") {
+            system_dependencies = {
+              default_unit = cfg.defaultUnit;
+              ctrl_alt_del_unit = cfg.ctrlAltDelUnit;
+            };
+          }
+        )
+      );
+
     in
-    pkgs.runCommandLocal "${type}-units" { }
+    pkgs.runCommandLocal "${type}-units"
+      { nativeBuildInputs = [ pkgs.buildPackages.nixos-systemd-unit-collector ]; }
       ''
         ${lib.optionalString cfg.unitGenerator.debug "START_TIME=$(date +%s%3N)"}
-        mkdir -p $out
 
-        # Copy the upstream systemd units we're interested in.
-        for i in ${toString upstreamUnits}; do
-          fn=${package}/example/systemd/${typeDir}/$i
-          if ! [ -e $fn ]; then echo "missing $fn"; false; fi
-          if [ -L $fn ]; then
-            cp -pd $fn $out/
-          else
-            ln -s $fn $out/
-          fi
-        done
+        nixos-systemd-unit-collector ${jsonConfig} $out
 
-        # Copy .wants links, but only those that point to units that
-        # we're interested in.
-        for i in ${toString upstreamWants}; do
-          fn=${package}/example/systemd/${typeDir}/$i
-          if ! [ -e $fn ]; then echo "missing $fn"; false; fi
-          x=$out/$(basename $fn)
-          mkdir $x
-          for i in $fn/*; do
-            y=$x/$(basename $i)
-            cp -pd $i $y
-            if ! [ -e $y ]; then rm $y; fi
-          done
-        done
-
-        # Symlink all units provided listed in systemd.packages.
-        packages="${toString packages}"
-
-        # Filter duplicate directories
-        declare -A unique_packages
-        for k in $packages ; do unique_packages[$k]=1 ; done
-
-        for i in ''${!unique_packages[@]}; do
-          for fn in $i/etc/systemd/${typeDir}/* $i/lib/systemd/${typeDir}/*; do
-            if ! [[ "$fn" =~ .wants$ ]]; then
-              if [[ -d "$fn" ]]; then
-                targetDir="$out/$(basename "$fn")"
-                mkdir -p "$targetDir"
-                ${lndir} "$fn" "$targetDir"
-              else
-                ln -s $fn $out/
-              fi
-            fi
-          done
-        done
-
-        # Symlink units defined by systemd.units where override strategy
-        # shall be automatically detected. If these are also provided by
-        # systemd or systemd.packages, then add them as
-        # <unit-name>.d/overrides.conf, which makes them extend the
-        # upstream unit.
-        for i in ${
-          toString (
-            mapAttrsToList (n: v: v.unit) (
-              filterAttrs (
-                n: v: (attrByPath [ "overrideStrategy" ] "asDropinIfExists" v) == "asDropinIfExists"
-              ) units
-            )
-          )
-        }; do
-          fn=$(basename $i/*)
-          if [ -e $out/$fn ]; then
-            if [ "$(readlink -f $i/$fn)" = /dev/null ]; then
-              ln -sfn /dev/null $out/$fn
-            else
-              ${
-                if allowCollisions then
-                  ''
-                    mkdir -p $out/$fn.d
-                    ln -s $i/$fn $out/$fn.d/overrides.conf
-                  ''
-                else
-                  ''
-                    echo "Found multiple derivations configuring $fn!"
-                    exit 1
-                  ''
-              }
-            fi
-         else
-            ln -fs $i/$fn $out/
-          fi
-        done
-
-        # Symlink units defined by systemd.units which shall be
-        # treated as drop-in file.
-        for i in ${
-          toString (
-            mapAttrsToList (n: v: v.unit) (
-              filterAttrs (n: v: v ? overrideStrategy && v.overrideStrategy == "asDropin") units
-            )
-          )
-        }; do
-          fn=$(basename $i/*)
-          mkdir -p $out/$fn.d
-          ln -s $i/$fn $out/$fn.d/overrides.conf
-        done
-
-        # Create service aliases from aliases option.
-        ${concatStrings (
-          mapAttrsToList (
-            name: unit:
-            concatMapStrings (name2: ''
-              ln -sfn '${name}' $out/'${name2}'
-            '') (unit.aliases or [ ])
-          ) units
-        )}
-
-        # Create .wants, .upholds and .requires symlinks from the wantedBy, upheldBy and
-        # requiredBy options.
-        ${concatStrings (
-          mapAttrsToList (
-            name: unit:
-            concatMapStrings (name2: ''
-              mkdir -p $out/'${name2}.wants'
-              ln -sfn '../${name}' $out/'${name2}.wants'/
-            '') (unit.wantedBy or [ ])
-          ) units
-        )}
-
-        ${concatStrings (
-          mapAttrsToList (
-            name: unit:
-            concatMapStrings (name2: ''
-              mkdir -p $out/'${name2}.upholds'
-              ln -sfn '../${name}' $out/'${name2}.upholds'/
-            '') (unit.upheldBy or [ ])
-          ) units
-        )}
-
-        ${concatStrings (
-          mapAttrsToList (
-            name: unit:
-            concatMapStrings (name2: ''
-              mkdir -p $out/'${name2}.requires'
-              ln -sfn '../${name}' $out/'${name2}.requires'/
-            '') (unit.requiredBy or [ ])
-          ) units
-        )}
-
-        ${optionalString (type == "system") ''
-          # Stupid misc. symlinks.
-          ln -s ${cfg.defaultUnit} $out/default.target
-          ln -s ${cfg.ctrlAltDelUnit} $out/ctrl-alt-del.target
-
-          ln -s ../remote-fs.target $out/multi-user.target.wants/
-        ''}
-
-        ${lib.optionalString cfg.unitGenerator.debug ''        
+        ${lib.optionalString cfg.unitGenerator.debug ''
           END_TIME=$(date +%s%3N)
           ELAPSED=$((END_TIME - START_TIME))
           echo "Built ${type}-units in ''${ELAPSED}ms" >&2
