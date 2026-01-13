@@ -378,11 +378,7 @@ rec {
         }
         .${type};
     in
-    pkgs.runCommand "${type}-units"
-      {
-        preferLocalBuild = true;
-        allowSubstitutes = false;
-      }
+    pkgs.runCommandLocal "${type}-units" { }
       ''
         ${lib.optionalString cfg.unitGenerator.debug "START_TIME=$(date +%s%3N)"}
         mkdir -p $out
