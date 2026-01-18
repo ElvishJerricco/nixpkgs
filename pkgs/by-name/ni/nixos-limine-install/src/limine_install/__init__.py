@@ -828,43 +828,47 @@ def install_bootloader() -> None:
                     )
 
     if config.biosSupport:
-        if cpu_family != "x86":
-            raise Exception(f"Unsupported CPU family for BIOS install: {cpu_family}")
-
-        limine_sys = config.liminePath / "share/limine/limine-bios.sys"
-        limine_sys_dest = limine_install_dir / "limine-bios.sys"
-
-        copy_file(limine_sys, limine_sys_dest)
-
-        device = config.biosDevice
-
-        if device == "nodev":
-            print(
-                "note: boot.loader.limine.biosSupport is set, but device is set to nodev, only the stage 2 bootloader will be installed.",
-                file=sys.stderr,
-            )
-            return
-
-        limine_deploy_args: List[str] = [str(limine_binary), "bios-install", device]
-
-        if config.partitionIndex:
-            limine_deploy_args.append(str(config.partitionIndex))
-
-        if config.force:
-            limine_deploy_args.append("--force")
-
-        try:
-            subprocess.run(limine_deploy_args)
-        except BaseException:
-            raise Exception(
-                "Failed to deploy BIOS stage 1 Limine bootloader!\n"
-                + "You might want to try enabling the `boot.loader.limine.force` option."
-            )
+        bios_install(cpu_family, limine_install_dir, limine_binary)
 
     print("removing unused boot files...")
     for path in paths:
         if not paths[path] and path.exists():
             path.unlink()
+
+
+def bios_install(cpu_family, limine_binary):
+    if cpu_family != "x86":
+        raise Exception(f"Unsupported CPU family for BIOS install: {cpu_family}")
+
+    limine_sys = config.liminePath / "share/limine/limine-bios.sys"
+    limine_sys_dest = limine_install_dir / "limine-bios.sys"
+
+    copy_file(limine_sys, limine_sys_dest)
+
+    device = config.biosDevice
+
+    if device == "nodev":
+        print(
+            "note: boot.loader.limine.biosSupport is set, but device is set to nodev, only the stage 2 bootloader will be installed.",
+            file=sys.stderr,
+        )
+        return
+
+    limine_deploy_args: List[str] = [str(limine_binary), "bios-install", device]
+
+    if config.partitionIndex:
+        limine_deploy_args.append(str(config.partitionIndex))
+
+    if config.force:
+        limine_deploy_args.append("--force")
+
+    try:
+        subprocess.run(limine_deploy_args)
+    except BaseException:
+        raise Exception(
+            "Failed to deploy BIOS stage 1 Limine bootloader!\n"
+            + "You might want to try enabling the `boot.loader.limine.force` option."
+        )
 
 
 def main() -> None:
