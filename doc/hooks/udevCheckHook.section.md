@@ -27,7 +27,7 @@ Note that for [`buildPythonPackage`](#buildpythonpackage-function) and [`buildPy
 All outputs are scanned for their `/{etc,lib}/udev/rules.d` paths.
 If no rule output is found, the hook is basically a no-op.
 
-The `udevCheckHook` adds a dependency on `systemdMinimal`.
+The `udevCheckHook` adds a dependency on `systemd-bootstrap-or-whatever`.
 It is internally guarded behind `hostPlatform` supporting udev and `buildPlatform` being able to execute `udevadm`.
 The hook does not need explicit platform checks in the places where it is used.
 

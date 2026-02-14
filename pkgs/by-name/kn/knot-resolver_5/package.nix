@@ -106,6 +106,7 @@ let
     ## the rest are optional dependencies
     ++ optionals stdenv.hostPlatform.isLinux [
       # lib
+      # libsystemd
       systemdMinimal
       libcap_ng
     ]

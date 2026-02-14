@@ -102,7 +102,7 @@ stdenv.mkDerivation (finalAttrs: {
     geoclue2
   ]
   ++ lib.optionals enableSystemd [
-    systemdMinimal # libsystemd
+    systemdMinimal # libsystemd <-
   ];
 
   nativeCheckInputs = [

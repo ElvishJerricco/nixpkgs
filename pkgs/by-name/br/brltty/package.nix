@@ -42,6 +42,7 @@ stdenv.mkDerivation (finalAttrs: {
     tcl # For TCL bindings
   ]
   ++ lib.optional alsaSupport alsa-lib
+  # libsystemd, libudev, and udevadm (why udevadm when you're using libudev?)
   ++ lib.optional systemdSupport systemdMinimal;
 
   doInstallCheck = true;

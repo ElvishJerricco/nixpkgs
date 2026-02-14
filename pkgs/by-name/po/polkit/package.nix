@@ -97,6 +97,7 @@ stdenv.mkDerivation rec {
   ]
   ++ lib.optionals stdenv.hostPlatform.isLinux [
     # On Linux, fall back to elogind when systemd support is off.
+    # libsystemd
     (if useSystemd then systemdMinimal else elogind)
   ];
 

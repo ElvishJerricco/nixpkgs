@@ -743,10 +743,9 @@ let
                   lndir
                   shellcheck-minimal
 
-                  # Only the out output is included here, which is what is
                   # required to build the NixOS udev rules
                   # See the comment in services/hardware/udev.nix
-                  systemdMinimal.out
+                  udevCheckHook
 
                   # add curl so that rather than seeing the test attempt to download
                   # curl's tarball, we see what it's trying to download

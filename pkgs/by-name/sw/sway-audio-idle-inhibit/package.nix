@@ -31,6 +31,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   buildInputs = [
     libpulseaudio
+    # libsystemd
     systemdMinimal
   ];
 

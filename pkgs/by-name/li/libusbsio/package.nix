@@ -38,6 +38,7 @@ stdenv.mkDerivation (finalAttrs: {
   ]
 
   ++ lib.optionals stdenv.hostPlatform.isLinux [
+    # Unused
     systemdMinimal # libudev
   ];
 

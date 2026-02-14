@@ -38,6 +38,7 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   buildInputs = lib.optionals withSystemd [
+    # Unused
     systemdMinimal
   ];
 

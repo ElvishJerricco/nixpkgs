@@ -76,6 +76,7 @@ stdenv.mkDerivation (finalAttrs: {
       libice
       libsm
     ]
+    # libsystemd
     ++ lib.optional enableSystemd systemdMinimal
     ++ lib.optionals stdenv.hostPlatform.isLinux [
       audit
@@ -104,6 +105,7 @@ stdenv.mkDerivation (finalAttrs: {
     "--enable-apparmor"
     "--enable-libaudit"
   ]
+  # Better to find this at runtime
   ++ lib.optionals enableSystemd [ "SYSTEMCTL=${systemdMinimal}/bin/systemctl" ];
 
   NIX_CFLAGS_LINK = lib.optionalString (!stdenv.hostPlatform.isDarwin) "-Wl,--as-needed";

@@ -16,6 +16,7 @@ in
 makeSetupHook {
   name = "udev-check-hook";
   substitutions = {
+    # I mean, I think this one is obvious :P
     udevadm = if applyHook then lib.getExe' systemdMinimal "udevadm" else "";
   };
   meta = {

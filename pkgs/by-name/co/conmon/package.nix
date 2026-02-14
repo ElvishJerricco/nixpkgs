@@ -37,6 +37,7 @@ stdenv.mkDerivation (finalAttrs: {
   buildInputs = [
     glib
     libseccomp
+    # libsystemd
     systemdMinimal
   ]
   ++ lib.optionals (!stdenv.hostPlatform.isMusl) [

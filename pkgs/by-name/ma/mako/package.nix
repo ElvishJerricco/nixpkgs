@@ -57,6 +57,7 @@ stdenv.mkDerivation (finalAttrs: {
     gappsWrapperArgs+=(
       --prefix PATH : "${
         lib.makeBinPath [
+          # hm...
           systemdMinimal # for busctl
           jq
           bash

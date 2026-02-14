@@ -33,6 +33,7 @@ stdenv.mkDerivation rec {
     libcap_ng
   ]
   ++ (lib.optionals enableSystemd [
+    # libsystemd
     systemdMinimal
   ]);
 

@@ -70,6 +70,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   );
 
   postPatch = ''
+    # uh huh..
     substituteInPlace lact-daemon/src/server/handler.rs \
       --replace-fail 'run_command("journalctl",'  'run_command("${systemdMinimal}/bin/journalctl",'
 

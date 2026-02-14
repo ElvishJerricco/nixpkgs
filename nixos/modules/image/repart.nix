@@ -216,6 +216,7 @@ in
         "buildPackages"
         "systemd"
       ];
+      # Hm, will need a better example
       example = "pkgs.buildPackages.systemdMinimal.override { withCryptsetup = true; }";
     };
 

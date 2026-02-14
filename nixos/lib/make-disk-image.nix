@@ -400,6 +400,7 @@ let
       config.system.build.nixos-install
       nixos-enter
       nix
+      # Seems unused
       systemdMinimal
     ]
     ++ lib.optional deterministic gptfdisk

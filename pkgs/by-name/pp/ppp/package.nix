@@ -55,6 +55,7 @@ stdenv.mkDerivation (finalAttrs: {
     openssl
   ]
   ++ lib.optionals withSystemd [
+    # libsystemd
     systemdMinimal
   ];
 

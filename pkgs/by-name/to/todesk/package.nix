@@ -79,6 +79,11 @@ buildFHSEnv {
     nspr
     kmod
     libxi
+    # libsystemd and libudev,
+    # as well as:
+    # $ strings $out/bin/ToDesk_Service | grep systemctl
+    # systemctl stop display-manager
+    # systemctl start display-manager
     systemdMinimal
     glib
     libz

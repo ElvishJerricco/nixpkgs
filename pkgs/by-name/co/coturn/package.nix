@@ -35,6 +35,7 @@ stdenv.mkDerivation (finalAttrs: {
     sqlite.dev
   ]
   ++ lib.optionals (lib.meta.availableOn stdenv.hostPlatform systemdMinimal) [
+    # libsystemd
     systemdMinimal
   ];
 

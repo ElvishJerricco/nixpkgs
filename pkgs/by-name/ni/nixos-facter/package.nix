@@ -49,7 +49,7 @@ buildGoModule (finalAttrs: {
     makeWrapper
   ];
 
-  # nixos-facter calls systemd-detect-virt
+  # nixos-facter calls systemd-detect-virt <-
   postInstall = ''
     wrapProgram "$out/bin/nixos-facter" \
         --prefix PATH : "${lib.makeBinPath [ systemdMinimal ]}"

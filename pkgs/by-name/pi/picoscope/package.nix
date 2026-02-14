@@ -35,6 +35,7 @@ let
     libusb1
     openssl
     stdenv.cc.cc.lib
+    # Seems unused
     systemdMinimal
     onetbb
   ];

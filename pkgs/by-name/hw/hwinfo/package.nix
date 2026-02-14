@@ -63,6 +63,8 @@ stdenv.mkDerivation (finalAttrs: {
       --replace-fail "/sbin/rmmod" "${kmod}/bin/rmmod" \
       --replace-fail "/usr/bin/udevinfo" "${systemdMinimal}/bin/udevinfo" \
       --replace-fail "/usr/bin/udevadm" "${systemdMinimal}/bin/udevadm"
+    # Not clear to me what happens if these are just program names on PATH or something:
+    # https://github.com/openSUSE/hwinfo/blob/c36e4b949c327562655bcff5d332b12f7282439b/src/hd/hd.c#L5721-L5722
 
     # Replace /usr/bin/perl
     patchShebangs src/ids/convert_hd
@@ -80,6 +82,7 @@ stdenv.mkDerivation (finalAttrs: {
     # since we don't have .git, we cannot run this.
     rm git2log
     pushd src/ids
+    # Obviously doesn't matter what build it's using here.
     cp ${systemdMinimal.src}/hwdb.d/pci.ids src/pci
     cp ${systemdMinimal.src}/hwdb.d/usb.ids src/usb
     # taken from https://github.com/openSUSE/hwinfo/blob/c87f449f1d4882c71b0a1e6dc80638224a5baeed/src/ids/update_pci_usb

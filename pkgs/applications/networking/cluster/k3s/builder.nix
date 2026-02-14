@@ -429,6 +429,7 @@ buildGoModule (finalAttrs: {
 
   k3sKillallDeps = [
     bash
+    # k3s-killall.sh uses `systemctl stop`
     systemdMinimal
     procps
     coreutils

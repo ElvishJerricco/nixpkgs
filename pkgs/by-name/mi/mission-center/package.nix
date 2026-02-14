@@ -117,6 +117,7 @@ stdenv.mkDerivation (finalAttrs: {
     + ''
       substituteInPlace subprojects/magpie/platform-linux/src/memory.rs \
         --replace-fail "udevadm" "${lib.getExe' systemdMinimal "udevadm"}"
+        # udevadm
     '';
 
   cargoDeps = symlinkJoin {

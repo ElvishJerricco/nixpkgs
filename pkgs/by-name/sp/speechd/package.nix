@@ -86,7 +86,7 @@ stdenv.mkDerivation (finalAttrs: {
     python
   ]
   ++ lib.optionals stdenv.hostPlatform.isLinux [
-    systemdMinimal # libsystemd
+    systemdMinimal # libsystemd <-
   ]
   ++ lib.optionals withAlsa [
     alsa-lib

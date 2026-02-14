@@ -66,7 +66,7 @@ stdenv.mkDerivation (finalAttrs: {
     python3Packages.jinja2
   ]
   ++ lib.optionals enableSystemd [
-    # udevCheckHook introduces a dependency on systemdMinimal
+    # udevCheckHook introduces a dependency on systemd
     udevCheckHook
   ];
 

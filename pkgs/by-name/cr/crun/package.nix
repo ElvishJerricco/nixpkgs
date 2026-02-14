@@ -68,6 +68,7 @@ stdenv.mkDerivation (finalAttrs: {
     criu
     libcap
     libseccomp
+    # libsystemd
     systemdMinimal
     yajl
   ];

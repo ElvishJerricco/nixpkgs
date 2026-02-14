@@ -24,6 +24,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   buildInputs = [
     bash
     linux-pam
+    # Seems unused
     systemdMinimal
   ];
 

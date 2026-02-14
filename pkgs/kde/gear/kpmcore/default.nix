@@ -30,6 +30,7 @@ let
     lvm2
     mdadm
     smartmontools
+    # Seems like it only needs udevadm, based on the externalcommand_whitelist.h linked above
     systemdMinimal
     util-linux
 

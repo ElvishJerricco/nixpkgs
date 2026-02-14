@@ -44,6 +44,7 @@ stdenv.mkDerivation rec {
     openssl
   ]
   ++ lib.optionals withSystemd [
+    # libsystemd
     systemdMinimal
   ];
 

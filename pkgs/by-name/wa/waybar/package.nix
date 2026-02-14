@@ -145,6 +145,7 @@ stdenv.mkDerivation (finalAttrs: {
   ++ lib.optional nlSupport libnl
   ++ lib.optional pulseSupport libpulseaudio
   ++ lib.optional sndioSupport sndio
+  # can be deleted
   ++ lib.optional systemdSupport systemdMinimal
   ++ lib.optional traySupport libdbusmenu-gtk3
   ++ lib.optional udevSupport udev

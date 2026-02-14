@@ -41,6 +41,8 @@ stdenv.mkDerivation (finalAttrs: {
   buildInputs = [
     gnome-desktop
     gtk3
+    # The meson requires a systemd dep, but only for the
+    # systemdsystemunitdir, which we override with an env var below
     systemdMinimal
     udisks
     xz

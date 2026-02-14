@@ -67,6 +67,7 @@ stdenv.mkDerivation (finalAttrs: {
     libsodium
   ]
   ++ lib.optionals withSystemd [
+    # unused: delete
     systemdMinimal
   ];
 

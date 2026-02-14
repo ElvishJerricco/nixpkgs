@@ -45,6 +45,7 @@ stdenv.mkDerivation (finalAttrs: {
     # umockdev will just work without having to provide it in their test environment
     # $PATH.
     (replaceVars ./substitute-udevadm.patch {
+      # udevadm
       udevadm = "${systemdMinimal}/bin/udevadm";
     })
   ];
@@ -64,6 +65,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   buildInputs = [
     glib
+    # libudev
     systemdMinimal
     libpcap
   ];
