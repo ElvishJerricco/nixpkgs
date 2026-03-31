@@ -1,4 +1,5 @@
 {
+  writeText,
   stdenv,
   lib,
   nixosTests,
@@ -203,6 +204,8 @@ let
   #  $ curl -s https://api.github.com/repos/systemd/systemd/releases/latest | \
   #     jq '.created_at|strptime("%Y-%m-%dT%H:%M:%SZ")|mktime'
   releaseTimestamp = "1773777352";
+
+  pythonUkify = python3Packages.python.withPackages (ps: with ps; [ pefile ]);
 in
 stdenv.mkDerivation (finalAttrs: {
   inherit pname;
@@ -248,6 +251,9 @@ stdenv.mkDerivation (finalAttrs: {
   ]
   ++ lib.optionals (stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isGnu) [
     ./0018-timesyncd-disable-NSCD-when-DNSSEC-validation-is-dis.patch
+  ]
+  ++ lib.optionals withUkify [
+    ./meson-python.patch
   ];
 
   postPatch = ''
@@ -367,7 +373,7 @@ stdenv.mkDerivation (finalAttrs: {
   ++ lib.optionals (withHomed || withCryptsetup) [ libfido2 ]
   ++ lib.optionals withLibBPF [ libbpf ]
   ++ lib.optional withTpm2Tss tpm2-tss
-  ++ lib.optional withUkify (python3Packages.python.withPackages (ps: with ps; [ pefile ]))
+  ++ lib.optional withUkify pythonUkify
   ++ lib.optionals withPasswordQuality [ libpwquality ]
   ++ lib.optionals withQrencode [ qrencode ]
   ++ lib.optionals withLibarchive [ libarchive ]
@@ -565,6 +571,13 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.mesonOption "libc" "musl")
     (lib.mesonBool "gshadow" false)
     (lib.mesonBool "idn" false)
+  ]
+  ++ lib.optionals withUkify [
+    "--cross-file"
+    (writeText "crossfile" ''
+      [binaries]
+      python3 = '${pythonUkify}/bin/python3'
+    '')
   ];
   preConfigure =
     let

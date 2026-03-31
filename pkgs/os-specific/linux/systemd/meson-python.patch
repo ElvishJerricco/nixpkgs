@@ -1,0 +1,33 @@
+diff --git a/meson.build b/meson.build
+index 3672005d75..70a9a499d6 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1692,7 +1692,8 @@
+ #####################################################################
+ 
+ pymod = import('python')
+-python = pymod.find_installation('python3', required : true, modules : ['jinja2'])
++python_program = find_program('python3', required : true, native : true)
++python = pymod.find_installation(python_program.full_path(), required : true, modules : ['jinja2'])
+ if not python.language_version().version_compare('>=3.9')
+         error('Python >= 3.9 is required')
+ endif
+@@ -1875,7 +1876,7 @@
+         'x86'         : 'ia32',
+ }.get(host_machine.cpu_family(), '')
+ 
+-pyelftools = pymod.find_installation('python3',
++pyelftools = pymod.find_installation(python_program.full_path(),
+                                      required : get_option('bootloader'),
+                                      modules : ['elftools'])
+ 
+@@ -1896,7 +1897,8 @@
+         efi_cpu_family_alt = 'x86'
+ endif
+ 
+-want_ukify = pymod.find_installation('python3', required: get_option('ukify'), modules : ['pefile']).found()
++python_ukify_program = find_program('python3', required : true)
++want_ukify = pymod.find_installation(python_ukify_program.full_path(), required: get_option('ukify'), modules : ['pefile']).found()
+ conf.set10('ENABLE_UKIFY', want_ukify)
+ 
+ #####################################################################
