@@ -44,20 +44,6 @@ let
   defaultSessionName = config.services.displayManager.defaultSession;
 
   setSessionScript = pkgs.callPackage ../x11/display-managers/account-service-util.nix { };
-
-  greeterUsers = lib.genAttrs' [ null 1 2 3 4 ] (
-    i:
-    let
-      # adding 1 to create `gdm-greeter{-2,-3,-4,-5}`
-      suffix = lib.optionalString (i != null) "-${toString (i + 1)}";
-    in
-    lib.nameValuePair "gdm-greeter${suffix}" {
-      isSystemUser = true;
-      uid = 60578 + (if i == null then 0 else i);
-      group = "gdm";
-      home = "/run/gdm/home/gdm-greeter${suffix}";
-    }
-  );
 in
 
 {
@@ -211,7 +197,6 @@ in
           description = "GDM user";
         };
       }
-      greeterUsers
     ];
 
     users.groups.gdm.gid = config.ids.gids.gdm;
@@ -246,27 +231,19 @@ in
           GDM_X_SESSION_WRAPPER = "${xSessionWrapper}";
         };
         execCmd = "exec ${gdm}/bin/gdm";
-        preStart = lib.optionalString (defaultSessionName != null) ''
+        # do you know about crime?
+        preStart = ''
+          echo gdm-greeter:!:1:::::: >> /etc/shadow
+          echo gdm-greeter-2:!:1:::::: >> /etc/shadow
+          echo gdm-greeter-3:!:1:::::: >> /etc/shadow
+          echo gdm-greeter-4:!:1:::::: >> /etc/shadow
+          echo gdm-greeter-5:!:1:::::: >> /etc/shadow
+        '' + lib.optionalString (defaultSessionName != null) ''
           # Set default session in session chooser to a specified values – basically ignore session history.
           ${setSessionScript}/bin/set-session ${config.services.displayManager.sessionData.autologinSession}
         '';
       };
     };
-
-    systemd.tmpfiles.rules =
-      lib.optionals config.services.pulseaudio.enable (
-        lib.concatLists (
-          lib.mapAttrsToList (name: user: [
-            "d ${user.home}/.config 0711 ${name} gdm"
-            "d ${user.home}/.config/pulse 0711 ${name} gdm"
-            "L+ ${user.home}/.config/pulse/${pulseConfig.name} - - - - ${pulseConfig}"
-          ]) greeterUsers
-        )
-      )
-      ++ lib.optionals config.services.gnome.gnome-initial-setup.enable [
-        # Create stamp file for gnome-initial-setup to prevent it starting in GDM.
-        "f /run/gdm/gdm.ran-initial-setup 0711 gdm gdm - yes"
-      ];
 
     # Otherwise GDM will not be able to start correctly and display Wayland sessions
     systemd.packages = [
